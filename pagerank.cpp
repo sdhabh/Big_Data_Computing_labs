@@ -1,9 +1,5 @@
 #include "pagerank.h"
-#include <fstream>
-#include <iostream>
-#include <iomanip>
-#include <cmath>
-#include <algorithm>
+
 
 PageRank::PageRank(double damping, double epsilon, int max_iter, int top_k)
     : damping_(damping), epsilon_(epsilon), 
@@ -91,8 +87,6 @@ void PageRank::calculate() {
 
     normalize();
 }
-
-#include <fstream> // 添加文件操作头文件
 
 void PageRank::printTopK() const {
     std::vector<std::pair<int, double>> results;

@@ -5,6 +5,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
+#include <fstream>
+#include <iostream>
+#include <iomanip>
+#include <cmath>
+#include <algorithm>
 
 class PageRank {
 public:
