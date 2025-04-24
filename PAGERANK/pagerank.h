@@ -1,6 +1,8 @@
 #ifndef PAGERANK_H
 #define PAGERANK_H
 
+//#define ENABLE_EDGE_DEDUP
+
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -31,12 +33,14 @@ public:
 
 private:
     // 内部数据结构
+    #ifdef ENABLE_EDGE_DEDUP
     struct hash_pair {
         template <class T1, class T2>
         size_t operator()(const std::pair<T1, T2>& p) const {
             return std::hash<T1>{}(p.first) ^ std::hash<T2>{}(p.second);
         }
     };
+    #endif
 
     // 参数配置
     double damping_;
@@ -48,7 +52,9 @@ private:
     std::unordered_map<int, std::vector<int>> in_links_;
     std::unordered_map<int, int> out_degree_;
     std::unordered_set<int> nodes_;
+    #ifdef ENABLE_EDGE_DEDUP
     std::unordered_set<std::pair<int, int>, hash_pair> edges_;
+    #endif
 
     // PageRank值存储
     std::unordered_map<int, double> pr_;

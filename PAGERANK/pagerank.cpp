@@ -5,22 +5,23 @@ PageRank::PageRank(double damping, double epsilon, int max_iter, int top_k)
     : damping_(damping), epsilon_(epsilon), 
       max_iter_(max_iter), top_k_(top_k) {}
 
+// 修改后的readEdges实现
 void PageRank::readEdges(const std::string& filename) {
     std::ifstream fin(filename);
-    if (!fin) {
-        throw std::runtime_error("Failed to open file: " + filename);
-    }
+    if (!fin) throw std::runtime_error("Failed to open: " + filename);
 
     int u, v;
     while (fin >> u >> v) {
+#ifdef ENABLE_EDGE_DEDUP
         auto edge = std::make_pair(u, v);
-        if (edges_.find(edge) == edges_.end()) {
-            edges_.insert(edge);
-            in_links_[v].push_back(u);
-            out_degree_[u]++;
-            nodes_.insert(u);
-            nodes_.insert(v);
-        }
+        if (edges_.find(edge) != edges_.end()) continue;
+        edges_.insert(edge);
+#endif
+        // 关键数据结构更新保持不变
+        in_links_[v].push_back(u);
+        out_degree_[u]++;
+        nodes_.insert(u);
+        nodes_.insert(v);
     }
     fin.close();
 }
@@ -84,7 +85,6 @@ void PageRank::calculate() {
             break;
         }
     }
-
     normalize();
 }
 
@@ -100,7 +100,7 @@ void PageRank::printTopK() const {
         [](const auto& a, const auto& b) { return a.second > b.second; });
 
     // 将结果输出到 result.txt 文件
-    std::ofstream outFile("result.txt"); // 创建文件输出流
+    std::ofstream outFile("Res.txt"); // 创建文件输出流
     if (!outFile) {
         std::cerr << "Failed to open result.txt for writing." << std::endl;
         return;
@@ -120,7 +120,7 @@ int main() {
     try {
         PageRank pr(0.85, 1e-8, 100, 100);
         pr.readEdges("Data.txt");
-        //pr.handleDeadEnds();  // 单独处理死节点 但是没有必要  调用会增加很多内存和时间开销
+        //pr.handleDeadEnds();  // 单独处理死节点  调用会增加很多内存和时间开销
         pr.calculate();
         pr.printTopK();
     } catch (const std::exception& e) {

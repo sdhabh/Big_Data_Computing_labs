@@ -232,9 +232,120 @@ $$
 
 ### 具体实现
 
+#### 初始化与数据载入
+
+在初始化阶段，构造函数接收并存储了PageRank类的核心参数，包括**阻尼系数、收敛阈值、最大迭代次数和结果截断数量**。这些参数的设定直接影响了后续迭代的收敛速度与结果精度，例如阻尼系数0.85是经典值，用于平衡随机跳转与正常转移的概率，而1e-8的收敛阈值则确保了结果的高精度要求。
+
+```c++
+//PageRank类 
+  double damping_;   // 阻尼因子
+  double epsilon_;   // 收敛阈值
+  int max_iter_;     // 最大迭代次数
+  int top_k_;        // 结果截断数量
+//main函数
+PageRank pr(0.85, 1e-8, 100, 100);
+```
+
+数据加载流程通过`readEdges`函数实现，其核心目标是构建图结构的内部表示。代码采用逐行读取边数据的方式，并通过集合`edges_`主动过滤重复边，避免了重复计算对图结构的影响。对于每条有效边，系统会同步更新三个关键数据结构：`in_links_`记录每个节点的入边来源，`out_degree_`统计节点的出度，`nodes_`集合维护所有节点的唯一性。这种设计使得后续迭代阶段能够快速访问节点的入链关系和出度信息，为高效计算转移概率矩阵提供了基础。
+
+```c++
+void PageRank::readEdges(const std::string& filename) {
+    std::ifstream fin(filename);
+    if (!fin) {
+        throw std::runtime_error("Failed to open file: " + filename);
+    }
+
+    int u, v;
+    while (fin >> u >> v) {
+        auto edge = std::make_pair(u, v);
+        if (edges_.find(edge) == edges_.end()) {
+            edges_.insert(edge);
+            in_links_[v].push_back(u);
+            out_degree_[u]++;
+            nodes_.insert(u);
+            nodes_.insert(v);
+        }
+    }
+    fin.close();
+}
+```
+
+从空间复杂度分析，主要数据结构的存储开销呈现线性特征。集合`edges_`和映射`in_links_`的空间复杂度均为O(E)，其中E为边数，前者存储所有边的唯一性标识，后者按目标节点组织入边列表。映射`out_degree_`和集合`nodes_`的空间复杂度为O(N)，N为节点数，分别用于记录节点出度和维护节点全集。因此整体空间复杂度为O(E + N)，属于典型的稀疏图存储方式，能够有效处理大规模网络数据。
+
+> [!note]
+>
+> 由于输入数据没有重复边，若进一步优化，可通过牺牲部分代码简洁性来消除`edges_`集合的存储 ，从而将空间复杂度降低 ，但当前实现通过冗余存储保证了数据完整性的严格校验；在后续实验结果分析中为达到内存最优，可将数据重复边检验的流程除去。
 
 
 
+#### 数据预处理
+
+在预处理阶段，`handleDeadEnds`函数通过虚拟连接消除死胡同节点对计算的影响：当节点出度为0时，将其出度设为全图节点数N，并建立该节点到所有节点的虚拟边。**这种处理将死胡同节点的转移概率均摊到全图节点，避免概率泄漏问题**，同时保证转移矩阵的随机性，其时间复杂度为O(DN)（D为悬挂节点数），空间开销增加O(DN)的虚拟边存储。
+
+```c++
+void PageRank::handleDeadEnds() {
+    const int N = nodes_.size();
+    for (const auto& node : nodes_) {
+        if (out_degree_[node] == 0) {
+            out_degree_[node] = N;
+            for (const auto& neighbor : nodes_) {
+                in_links_[neighbor].push_back(node);
+            }
+        }
+    }
+}
+```
+
+> [!caution]
+>
+> 值得注意的是，**虚拟边的引入可能导致边数E膨胀至O(N²)的最坏情况**（当多数节点为悬挂节点时）， 此次数据集中死胡同节点占比高达10%，导致后续计算的空间和时间复杂度大大增大  ，因此在实验结果分析中可恰当的选择是否对死胡同节点进行单独处理 。
+
+
+
+#### PageRank计算
+
+PageRank计算采用迭代逼近法实现核心算法，其逻辑架构围绕概率转移、收敛控制与数值稳定性展开。
+
+计算核心`calculate`函数通过幂迭代法求解平稳分布。初始化阶段为所有节点赋予均匀概率1/N，时间复杂度O(N)。迭代过程中，**每个节点的新PageRank值由入链节点的贡献加权求和，叠加阻尼系数(1-d)/N的随机跳转概率。**
+
+其中入链贡献计算通过遍历`in_links_`结构获取源节点，结合其出度进行概率分配，单次迭代时间复杂度为O(E+N)（E为有效入边和）。收敛判定采用L1范数差值，当变化量小于阈值或达到最大迭代次数时终止，整体时间复杂度为`O(K(E+N))`（K为实际迭代次数）。空间复杂度主要来自存储入边列表O(E)、节点出度O(N)和两个PageRank向量O(N)，总空间复杂度为O(E+N)。
+
+```c++
+void PageRank::calculate() {
+    initializeRank();
+    std::unordered_map<int, double> pr_new;
+
+    for (int iter = 0; iter < max_iter_; ++iter) {
+        double diff = 0.0;
+        pr_new.clear();
+
+        // 计算新的PageRank值
+        for (const auto& node : nodes_) {
+            double sum_in = 0.0;
+            for (const auto& src : in_links_.at(node)) {
+                sum_in += pr_[src] / out_degree_.at(src);
+            }
+            pr_new[node] = (1.0 - damping_) / nodes_.size() + damping_ * sum_in;
+        }
+
+        // 计算差值并更新
+        for (const auto& node : nodes_) {
+            diff += std::fabs(pr_new[node] - pr_[node]);
+            pr_[node] = pr_new[node];
+        }
+
+        // 收敛检查
+        if (diff < epsilon_) {
+            std::cerr << "Converged at iteration: " << iter + 1 
+                     << " (diff=" << diff << ")\n";
+            break;
+        }
+    }
+    normalize();
+}
+```
+
+收敛性通过计算两次迭代间所有节点权值的绝对差之和𝑑𝑖𝑓𝑓进行判定，当𝑑𝑖𝑓𝑓<*ϵ*时提前终止迭代，否则在达到最大迭代次数后强制停止，最后通过`normalize`函数通过概率归一化消除浮点误差累积，确保结果总和为1，其时间复杂度O(N)可忽略不计。上述实现通过哈希表存储中间结果，牺牲部分缓存局部性换取动态扩容能力，适合处理非连续节点编号的大规模稀疏网络。
 
 
 
