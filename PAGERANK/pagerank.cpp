@@ -1,12 +1,14 @@
+// pagerank.cpp
 #include "pagerank.h"
+#include <cstdlib>
+#include <sys/stat.h>
 
+PageRank_basic::PageRank_basic(double damping, double epsilon, int max_iter, int top_k)
+    : DAMPING(damping), EPS(epsilon), 
+      MAX_ITER(max_iter), TOP_K(top_k) {}
 
-PageRank::PageRank(double damping, double epsilon, int max_iter, int top_k)
-    : damping_(damping), epsilon_(epsilon), 
-      max_iter_(max_iter), top_k_(top_k) {}
-
-// ĞŞ¸ÄºóµÄreadEdgesÊµÏÖ
-void PageRank::readEdges(const std::string& filename) {
+// ä¿®æ”¹åçš„readEdgeså®ç°
+void PageRank_basic::readEdges(const std::string& filename) {
     std::ifstream fin(filename);
     if (!fin) throw std::runtime_error("Failed to open: " + filename);
 
@@ -17,7 +19,7 @@ void PageRank::readEdges(const std::string& filename) {
         if (edges_.find(edge) != edges_.end()) continue;
         edges_.insert(edge);
 #endif
-        // ¹Ø¼üÊı¾İ½á¹¹¸üĞÂ±£³Ö²»±ä
+        // å…³é”®æ•°æ®ç»“æ„æ›´æ–°ä¿æŒä¸å˜
         in_links_[v].push_back(u);
         out_degree_[u]++;
         nodes_.insert(u);
@@ -26,7 +28,7 @@ void PageRank::readEdges(const std::string& filename) {
     fin.close();
 }
 
-void PageRank::handleDeadEnds() {
+void PageRank_basic::handleDeadEnds() {
     const int N = nodes_.size();
     for (const auto& node : nodes_) {
         if (out_degree_[node] == 0) {
@@ -38,14 +40,14 @@ void PageRank::handleDeadEnds() {
     }
 }
 
-void PageRank::initializeRank() {
+void PageRank_basic::initializeRank() {
     const double init_rank = 1.0 / nodes_.size();
     for (const auto& node : nodes_) {
         pr_[node] = init_rank;
     }
 }
 
-void PageRank::normalize() {
+void PageRank_basic::normalize() {
     double sum = 0.0;
     for (const auto& kv : pr_) {
         sum += kv.second;
@@ -55,31 +57,31 @@ void PageRank::normalize() {
     }
 }
 
-void PageRank::calculate() {
+void PageRank_basic::calculate() {
     initializeRank();
     std::unordered_map<int, double> pr_new;
 
-    for (int iter = 0; iter < max_iter_; ++iter) {
+    for (int iter = 0; iter < MAX_ITER; ++iter) {
         double diff = 0.0;
         pr_new.clear();
 
-        // ¼ÆËãĞÂµÄPageRankÖµ
+        // è®¡ç®—æ–°çš„PageRankå€¼
         for (const auto& node : nodes_) {
             double sum_in = 0.0;
             for (const auto& src : in_links_.at(node)) {
                 sum_in += pr_[src] / out_degree_.at(src);
             }
-            pr_new[node] = (1.0 - damping_) / nodes_.size() + damping_ * sum_in;
+            pr_new[node] = (1.0 - DAMPING) / nodes_.size() + DAMPING * sum_in;
         }
 
-        // ¼ÆËã²îÖµ²¢¸üĞÂ
+        // è®¡ç®—å·®å€¼å¹¶æ›´æ–°
         for (const auto& node : nodes_) {
             diff += std::fabs(pr_new[node] - pr_[node]);
             pr_[node] = pr_new[node];
         }
 
-        // ÊÕÁ²¼ì²é
-        if (diff < epsilon_) {
+        // æ”¶æ•›æ£€æŸ¥
+        if (diff < EPS) {
             std::cerr << "Converged at iteration: " << iter + 1 
                      << " (diff=" << diff << ")\n";
             break;
@@ -88,7 +90,7 @@ void PageRank::calculate() {
     normalize();
 }
 
-void PageRank::printTopK() const {
+void PageRank_basic::printTopK() const {
     std::vector<std::pair<int, double>> results;
     results.reserve(pr_.size());
     
@@ -99,30 +101,218 @@ void PageRank::printTopK() const {
     std::sort(results.begin(), results.end(),
         [](const auto& a, const auto& b) { return a.second > b.second; });
 
-    // ½«½á¹ûÊä³öµ½ result.txt ÎÄ¼ş
-    std::ofstream outFile("Res.txt"); // ´´½¨ÎÄ¼şÊä³öÁ÷
+    // å°†ç»“æœè¾“å‡ºåˆ° result.txt æ–‡ä»¶
+    std::ofstream outFile("Res.txt"); // åˆ›å»ºæ–‡ä»¶è¾“å‡ºæµ
     if (!outFile) {
         std::cerr << "Failed to open result.txt for writing." << std::endl;
         return;
     }
 
-    outFile << "nodeID\tPageRank\n"; // Ğ´Èë±íÍ·
-    const int output_size = std::min(top_k_, static_cast<int>(results.size()));
+    outFile << "/******pagerank_block_result******/ \n";
+
+    outFile << "nodeID\tPageRank\n"; // å†™å…¥è¡¨å¤´
+    const int output_size = std::min(TOP_K, static_cast<int>(results.size()));
     for (int i = 0; i < output_size; ++i) {
-        outFile << results[i].first << "\t" // ½«½á¹ûĞ´ÈëÎÄ¼ş
+        outFile << results[i].first << "\t" // å°†ç»“æœå†™å…¥æ–‡ä»¶
                 << std::fixed << std::setprecision(18)
                 << results[i].second << "\n";
     }
-    outFile.close(); // ¹Ø±ÕÎÄ¼şÁ÷
+    outFile.close(); // å…³é—­æ–‡ä»¶æµ
 }
 
+
+
+PageRank_block::PageRank_block(double damping, double epsilon, int max_iter, 
+                 int top_k, int num_blocks, int block_size)
+    : DAMPING(damping), EPS(epsilon), MAX_ITER(max_iter),
+      TOP_K(top_k), NUM_BLOCKS(num_blocks), BLOCK_SIZE(block_size),
+      node_count(0) {}
+
+void PageRank_block::preprocessData(const std::string& input_file) {
+    struct stat info;
+    if(stat("blocks", &info) != 0) {
+        system("mkdir -p blocks");
+        std::vector<std::ofstream> block_files(NUM_BLOCKS);
+        for(int i = 0; i < NUM_BLOCKS; ++i) {
+            std::string filename = "blocks/block_" + std::to_string(i) + ".dat";
+            block_files[i].open(filename, std::ios::binary);
+        }
+        std::ifstream fin(input_file);
+        int u, v;
+        while(fin >> u >> v) {
+            int block_id = (v % NUM_BLOCKS + NUM_BLOCKS) % NUM_BLOCKS;
+            block_files[block_id].write(reinterpret_cast<char*>(&u), sizeof(int));
+            block_files[block_id].write(reinterpret_cast<char*>(&v), sizeof(int));
+        }
+    }
+}
+
+PageRank_block::BlockData PageRank_block::loadBlock(int block_id) const {
+    BlockData block;
+    std::string filename = "blocks/block_" + std::to_string(block_id) + ".dat";
+    std::ifstream fin(filename, std::ios::binary);
+    int u, v;
+    while(fin.read(reinterpret_cast<char*>(&u), sizeof(int))) {
+        fin.read(reinterpret_cast<char*>(&v), sizeof(int));
+        block.src_list.push_back(u);
+        block.dst_list.push_back(v);
+    }
+    return block;
+}
+
+void PageRank_block::buildGraphStructure() {
+    // å»ºç«‹IDæ˜ å°„
+    for(int blk = 0; blk < NUM_BLOCKS; ++blk) {
+        BlockData block = loadBlock(blk);
+        for(size_t i = 0; i < block.src_list.size(); ++i) {
+            int src = block.src_list[i], dst = block.dst_list[i];
+            if(!id_map.count(src)) id_map[src] = node_count++;
+            if(!id_map.count(dst)) id_map[dst] = node_count++;
+        }
+    }
+    
+    // åˆå§‹åŒ–æ•°æ®ç»“æ„
+    original_ids.resize(node_count);
+    out_degree.assign(node_count, 0);
+    for(auto &kv : id_map) original_ids[kv.second] = kv.first;
+
+    // ç»Ÿè®¡å‡ºåº¦
+    for(int blk = 0; blk < NUM_BLOCKS; ++blk) {
+        BlockData block = loadBlock(blk);
+        for(int src : block.src_list) {
+            int mapped_src = id_map[src];
+            ++out_degree[mapped_src];
+        }
+    }
+}
+
+void PageRank_block::initializePRValues() {
+    const int N = node_count;
+    pr.assign(N, 1.0 / N);
+}
+
+double PageRank_block::computeIteration() {
+    const int N = node_count;
+    std::vector<double> pr_new(N);
+    double S_dead = 0.0;
+
+    // æ­»èŠ‚ç‚¹è´¡çŒ®è®¡ç®—
+    #ifdef OPENMP_ENABLED
+    #pragma omp parallel for reduction(+:S_dead)
+    #endif
+    for(int i = 0; i < N; ++i) {
+        if(out_degree[i] == 0) S_dead += pr[i];
+    }
+
+    const double base = (1.0 - DAMPING) / N + DAMPING * S_dead / N;
+    
+    // åŸºç¡€å€¼åˆå§‹åŒ–
+    #ifdef OPENMP_ENABLED
+    #pragma omp parallel for
+    #endif
+    for(int i = 0; i < N; ++i) pr_new[i] = base;
+
+    // åˆ†å—çŸ©é˜µè®¡ç®—
+    #ifdef OPENMP_ENABLED
+    #pragma omp parallel for schedule(dynamic)
+    #endif
+    for(int blk = 0; blk < NUM_BLOCKS; ++blk) {
+        BlockData block = loadBlock(blk);
+        for(size_t i = 0; i < block.dst_list.size(); ++i) {
+            int src = block.src_list[i];
+            int dst = block.dst_list[i];
+            const int mapped_src = id_map[src];
+            const int mapped_dst = id_map[dst];
+            
+            if(out_degree[mapped_src] > 0) {
+                const double contrib = DAMPING * pr[mapped_src] / out_degree[mapped_src];
+                #ifdef OPENMP_ENABLED
+                #pragma omp atomic
+                #endif
+                pr_new[mapped_dst] += contrib;
+            }
+        }
+    }
+
+    // æ”¶æ•›æ€§æ£€æŸ¥
+    double diff = 0.0;
+    #ifdef OPENMP_ENABLED
+    #pragma omp parallel for reduction(+:diff)
+    #endif
+    for(int i = 0; i < N; ++i) diff += fabs(pr_new[i] - pr[i]);
+    
+    pr.swap(pr_new);
+    return diff;
+}
+
+void PageRank_block::calculate(const std::string& input_file) {
+    preprocessData(input_file);
+    buildGraphStructure();
+    initializePRValues();
+
+    //double start_time = omp_get_wtime();
+    for(int iter = 0; iter < MAX_ITER; ++iter) {
+        double diff = computeIteration();
+        if(diff < EPS) {
+            std::cerr << "Converged at iteration " << iter + 1 << '\n';
+            break;
+        }
+    }
+    //std::cerr << "Elapsed " << omp_get_wtime() - start_time << " s\n";
+}
+
+void PageRank_block::printTopK() const {
+    std::ofstream output_file("Res.txt");
+    if (!output_file) {
+        throw std::runtime_error("Failed to open Res.txt for writing");
+    }
+
+    // å†™å…¥æ ‡è¯†å¤´
+    output_file << "/******pagerank_block_result******/ \n";
+    
+    std::vector<std::pair<double, int>> results;
+    for(int i = 0; i < node_count; ++i)
+        results.emplace_back(pr[i], original_ids[i]);
+    
+    std::partial_sort(results.begin(), results.begin() + std::min(TOP_K, node_count),
+                     results.end(), [](auto &a, auto &b) { return a.first > b.first; });
+
+    // è¾“å‡ºè¡¨å¤´å’Œæ•°æ®
+    output_file << "nodeID\tPageRank\n";
+    for(int i = 0; i < std::min(TOP_K, node_count); ++i) {
+        output_file << results[i].second << '\t' 
+                   << std::fixed << std::setprecision(18) << results[i].first<< '\n';
+    }
+
+    // æ·»åŠ ç»“æœç»Ÿè®¡
+ 
+}
+
+
 int main() {
+
+    const double DAMPING = 0.85;
+    const double EPS = 1e-8;
+    const int MAX_ITER = 100;
+    const int TOP_K = 100;
+    const int NUM_BLOCKS = 100;
+    const int BLOCK_SIZE = 100000;
+
+
     try {
-        PageRank pr(0.85, 1e-8, 100, 100);
+#ifdef BASIC_VERSION
+        // åŸºæœ¬ç®—æ³•ç‰ˆæœ¬
+        PageRank_basic pr(DAMPING, EPS, MAX_ITER, TOP_K);
         pr.readEdges("Data.txt");
-        //pr.handleDeadEnds();  // µ¥¶À´¦ÀíËÀ½Úµã  µ÷ÓÃ»áÔö¼ÓºÜ¶àÄÚ´æºÍÊ±¼ä¿ªÏú
+        // pr.handleDeadEnds(); // å¯é€‰æ­»èŠ‚ç‚¹å¤„ç†
         pr.calculate();
         pr.printTopK();
+#else
+        // åˆ†å—çŸ©é˜µä¼˜åŒ–ç‰ˆæœ¬
+        PageRank_block pr(DAMPING, EPS, MAX_ITER, TOP_K,NUM_BLOCKS,BLOCK_SIZE);
+        pr.calculate("Data.txt");
+        pr.printTopK();
+#endif
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;

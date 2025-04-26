@@ -240,8 +240,8 @@ $$
 //PageRank类 
   double damping_;   // 阻尼因子
   double epsilon_;   // 收敛阈值
-  int max_iter_;     // 最大迭代次数
-  int top_k_;        // 结果截断数量
+  int MAX_ITER;     // 最大迭代次数
+  int TOP_K;        // 结果截断数量
 //main函数
 PageRank pr(0.85, 1e-8, 100, 100);
 ```
@@ -315,7 +315,7 @@ void PageRank::calculate() {
     initializeRank();
     std::unordered_map<int, double> pr_new;
 
-    for (int iter = 0; iter < max_iter_; ++iter) {
+    for (int iter = 0; iter < MAX_ITER; ++iter) {
         double diff = 0.0;
         pr_new.clear();
 

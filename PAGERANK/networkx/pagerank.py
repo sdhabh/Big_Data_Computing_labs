@@ -22,20 +22,22 @@ G = nx.DiGraph()
 G.add_nodes_from(nodes)
 G.add_edges_from(edges)
 
-# 处理死胡同节点（networkx的pagerank已自动处理）
-# 直接调用pagerank算法
+# 调用pagerank算法
 pageranks = nx.pagerank(
     G, 
-    alpha=DAMPING,  # 阻尼因子对应(1 - DAMPING)的随机跳转
-    tol=EPS,        # 收敛阈值
+    alpha=DAMPING,
+    tol=EPS,
     max_iter=MAX_ITER
 )
 
-# 归一化处理（networkx结果已归一化，此处可省略）
-# 按PageRank值排序
+# 排序结果
 sorted_pr = sorted(pageranks.items(), key=lambda x: -x[1])
 
-# 输出结果
-print("nodeID\tPageRank")
-for node, rank in sorted_pr[:TOP_K]:
-    print(f"{node}\t{rank:.18f}")
+# 输出到文件
+with open("Res.txt", "w") as f:
+    # 写入表头
+    f.write("nodeID\tPageRank\n")
+    
+    # 写入前TOP_K个结果
+    for node, rank in sorted_pr[:TOP_K]:
+        f.write(f"{node}\t{rank:.18f}\n")

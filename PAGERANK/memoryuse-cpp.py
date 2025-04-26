@@ -65,7 +65,7 @@ def monitor_memory(executable_path, *args):
     return max_memory, run_time
 
 def main():
-    cpp_file,prog_args='pagerank.cpp',''
+    cpp_file,prog_args='pagerank.cpp','-fopenmp'
     if len(sys.argv) < 2:
         cpp_file='pagerank.cpp'
         prog_args=''
