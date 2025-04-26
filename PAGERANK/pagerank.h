@@ -4,7 +4,7 @@
 
 //#define BASIC_VERSION
 //#define ENABLE_EDGE_DEDUP
-//#define OPENMP_ENABLED
+#define OPENMP_ENABLED
 
 #include <vector>
 #include <unordered_map>
