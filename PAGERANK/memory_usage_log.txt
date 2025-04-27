@@ -1202,3 +1202,304 @@ Time: 0.31 秒
 [2025-04-26 15:26:47] pagerank.cpp - avg (10 epoches)
 avg mm used: 7.48 MB
 
+[2025-04-27 10:17:27] pagerank.exe
+Maximum: 7.71 MB
+Time: 0.53 秒
+
+[2025-04-27 10:17:27] pagerank.exe
+Maximum: 7.68 MB
+Time: 0.52 秒
+
+[2025-04-27 10:17:28] pagerank.exe
+Maximum: 7.63 MB
+Time: 0.53 秒
+
+[2025-04-27 10:17:28] pagerank.exe
+Maximum: 7.63 MB
+Time: 0.52 秒
+
+[2025-04-27 10:17:29] pagerank.exe
+Maximum: 7.78 MB
+Time: 0.52 秒
+
+[2025-04-27 10:17:29] pagerank.exe
+Maximum: 8.29 MB
+Time: 0.52 秒
+
+[2025-04-27 10:17:30] pagerank.exe
+Maximum: 7.99 MB
+Time: 0.51 秒
+
+[2025-04-27 10:17:30] pagerank.exe
+Maximum: 7.90 MB
+Time: 0.51 秒
+
+[2025-04-27 10:17:31] pagerank.exe
+Maximum: 7.31 MB
+Time: 0.51 秒
+
+[2025-04-27 10:17:31] pagerank.exe
+Maximum: 7.79 MB
+Time: 0.51 秒
+
+[2025-04-27 10:17:31] pagerank.cpp - avg (10 epoches)
+avg mm used: 7.77 MB
+
+[2025-04-27 10:19:37] pagerank.exe
+Maximum: 7.10 MB
+Time: 0.32 秒
+
+[2025-04-27 10:19:37] pagerank.exe
+Maximum: 7.49 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:37] pagerank.exe
+Maximum: 7.35 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:38] pagerank.exe
+Maximum: 7.56 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:38] pagerank.exe
+Maximum: 7.38 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:38] pagerank.exe
+Maximum: 7.52 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:39] pagerank.exe
+Maximum: 7.61 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:39] pagerank.exe
+Maximum: 7.49 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:39] pagerank.exe
+Maximum: 7.54 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:40] pagerank.exe
+Maximum: 7.48 MB
+Time: 0.31 秒
+
+[2025-04-27 10:19:40] pagerank.cpp - avg (10 epoches)
+avg mm used: 7.45 MB
+
+[2025-04-27 10:22:00] pagerank.exe
+Maximum: 7.38 MB
+Time: 0.32 秒
+
+[2025-04-27 10:22:00] pagerank.exe
+Maximum: 7.64 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:01] pagerank.exe
+Maximum: 7.53 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:01] pagerank.exe
+Maximum: 7.61 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:01] pagerank.exe
+Maximum: 7.39 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:02] pagerank.exe
+Maximum: 7.26 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:02] pagerank.exe
+Maximum: 7.43 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:02] pagerank.exe
+Maximum: 7.50 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:03] pagerank.exe
+Maximum: 7.39 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:03] pagerank.exe
+Maximum: 7.45 MB
+Time: 0.31 秒
+
+[2025-04-27 10:22:03] pagerank.cpp - avg (10 epoches)
+avg mm used: 7.46 MB
+
+[2025-04-27 10:26:17] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.42 秒
+
+[2025-04-27 10:26:17] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.41 秒
+
+[2025-04-27 10:26:17] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:26:18] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:26:18] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:26:18] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:26:18] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:26:19] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:26:19] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:26:19] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:26:19] pagerank.cpp - avg (10 epoches)
+avg mm used: 7.58 MB
+
+[2025-04-27 10:28:50] pagerank.exe
+Maximum: 7.49 MB
+Time: 0.32 秒
+
+[2025-04-27 10:28:50] pagerank.exe
+Maximum: 7.23 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:51] pagerank.exe
+Maximum: 7.34 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:51] pagerank.exe
+Maximum: 7.10 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:51] pagerank.exe
+Maximum: 7.32 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:52] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:52] pagerank.exe
+Maximum: 7.48 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:52] pagerank.exe
+Maximum: 7.79 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:53] pagerank.exe
+Maximum: 7.00 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:53] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:28:53] pagerank.cpp - avg (10 epoches)
+avg mm used: 7.39 MB
+
+[2025-04-27 10:29:02] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.52 秒
+
+[2025-04-27 10:29:03] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:03] pagerank.exe
+Maximum: 4.99 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:04] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:05] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:05] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:06] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:06] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:07] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:07] pagerank.exe
+Maximum: 4.98 MB
+Time: 0.51 秒
+
+[2025-04-27 10:29:07] pagerank.cpp - avg (10 epoches)
+avg mm used: 4.98 MB
+
+[2025-04-27 10:37:19] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.32 秒
+
+[2025-04-27 10:37:19] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.41 秒
+
+[2025-04-27 10:37:20] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:37:20] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:37:20] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.41 秒
+
+[2025-04-27 10:37:21] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:37:21] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:37:21] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:37:22] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:37:22] pagerank.exe
+Maximum: 7.58 MB
+Time: 0.31 秒
+
+[2025-04-27 10:37:22] pagerank.cpp - avg (10 epoches)
+avg mm used: 7.58 MB
+

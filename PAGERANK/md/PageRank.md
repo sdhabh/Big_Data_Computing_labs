@@ -360,113 +360,28 @@ void PageRank::calculate() {
 
 
 
-##  Block-stripe
+## Block-stripe
 
-
+PageRank分块算法的背景源于超大规模图数据的计算挑战，传统基于全局稀疏矩阵的实现在内存容量和访存效率上存在双重瓶颈。分块策略通过将邻接矩阵按目标节点哈希划分为连续块，利用局部性原理将边数据压缩为二进制块文件存储同时通过按需加载与异步预取技术掩盖I/O延迟；计算层面，基于块结构的任务并行化将稀疏矩阵-向量乘（SpMV）分解为独立子任务，结合动态调度与原子操作的向量化优化，在NUMA架构下实现近线性的扩展性。
 
 ### 算法概述
 
-#### 初始版本中的问题
+#### 问题分析
 
-- **数据结构导致的内存消耗问题：**初始版本中使用如下数据结构
+在大规模图数据场景下，传统PageRank算法的实现面临显著的内存与计算效率瓶颈。原始实现采用基于哈希表（`unordered_map`）的**动态容器存储图结构，其内存布局的离散性导致存储开销激增**：哈希表的桶结构需预留冗余空间以应对哈希冲突，而键值对的动态内存分配会引入内存碎片化问题。 这种数据结构设计在面对数十亿节点规模的图时，内存占用量可能超出单机承载能力，同时哈希表的不连续内存访问模式会显著降低CPU缓存命中率，形成性能瓶颈。
 
-    ```C++
-    unordered_map<int, vector<int>> in_links; // 记录每个节点的入链表
-    unordered_map<int, int> out_degree;       // 记录每个节点的出度
-    unordered_set<int> nodes;                 // 所有出现过的节点集合
-    ```
-
-    unordered_map和vector的组合在存储和访问时会有比较大的开销，且map键值存储需要进行额外的哈希计算，效率很低。
-
-- **对边进行去重时的内存开销**
-
-    由于我们不能保证数据集中的边数据不会重复，所以需要在读取数据的时候对重复的边进行去重，而初始版本的算法中使用unordered_set来存储边，但是其中进行的哈希运算会引入额外的内存和运算开销
-
-- 对于死胡同节点的处理操作
-
-    初始版本直接将出度为0的节点显式的连接到所有节点，然而这样会使得邻接表的内存占用大幅度增加，如果图的规模过大，甚至会出现内存不足的情况
-
-- 计算时的不连续访问及遍历开销
-
-    初始版本计算的代码如下：
-
-    ```C++
-    for (int node : nodes) {
-        double sum_in = 0.0;
-        for (int src : in_links[node]) {
-            sum_in += pr[src] / out_degree[src];
-        }
-        pr_new[node] = (1.0 - DAMPING) / N + DAMPING * sum_in;
-    }
-    ```
-
-    此处遍历邻接表时，访问的模式是不连续的，这会导致缓存的命中率极低，导致额外的时间开销。
-
-    且每次迭代都要遍历所有节点和边，效率极低。
-
-综上所述，我们使用CSR稀疏矩阵以及块矩阵优化方式来重新设计算法
-
-#### CSR稀疏矩阵格式
-
-CSR（Compressed Sparse Row，压缩稀疏行）是一种高效存储稀疏矩阵的数据结构，CSR 格式通过只存储非零元素及其位置，避免了存储大量的零值，从而节省内存并提高计算效率。
-
-**例子如下：**
-
-对于如下矩阵
-
-```C++
-0  5  0  0
-3  0  0  0
-0  0  0  7
-0  0  1  0
-```
-
-- 如果使用二维数组来存储，就需要存储所有16个元素，其中有12个0
-
-- 而使用稀疏矩阵只需要存储四个非零元素和行列位置，节省了大量空间
-
-CSR 格式将稀疏矩阵分为三个部分存储：
-
-1. **`values`**：
-
-    - 存储所有非零元素的值，按行的顺序依次存储。
-
-    - 例如，上述矩阵的非零元素是 `[5, 3, 7, 1]`。
-
-1. **`col_idx`（列索引）**：
-
-    - 存储每个非零元素所在的列号。
-
-    - 例如，上述矩阵中非零元素的列号是 `[1, 0, 3, 2]`。
-
-1. **`row_ptr`（行指针）**：
-
-    - 存储每一行的非零元素在 `values` 数组中的起始位置。
-
-    - 例如：
-
-        - 第 0 行的非零元素从 `values[1]` 开始。
-
-        - 第 1 行的非零元素从 `values[0]` 开始。
-
-        - 第 2 行的非零元素从 `values[3]` 开始。
-
-        - 第 3 行的非零元素从 `values[2]` 开始。
-
-    - 对应的 `row_ptr` 是 `[1, 0, 3, 2, 4]`（注意：最后一个值是非零元素的总数，用于计算范围）。
-
-#### **块矩阵优化（分块计算）**
+计算阶段的遍历过程进一步放大了硬件效率损失。**算法在迭代时需全量扫描所有节点及其入边集合**，而稀疏图中节点分布的随机性导致内存访问空间局部性极差，频繁的缓存行失效（Cache Line Miss）迫使CPU频繁从主存加载数据。
 
 在现实应用中，pagerank计算的数据集往往很大，转移矩阵的维度为N×N，对于大规模的图（例如数十亿节点），矩阵无法直接载入到内存中进行计算，并且原始的计算方案会引入许多从内存读取数据到cache乃至从硬盘读取数据到内存的额外开销，导致算法的效率极低，而且原始的计算方案会限制分布式计算资源的使用，因此采用分块的计算方案来优化pagerank算法非常重要。
 
-#### **分块矩阵的核心思想**
-
-将转移矩阵M和节点集划分为多个逻辑块，每一个块都对应了一个子矩阵和子向量，从而计算可分块独立进行，最后合并结果
-
-分块矩阵格式如下：
 
 
-$M = \begin{bmatrix}
+#### 核心思想
+
+将转移矩阵M和节点集划分为多个逻辑块，每一个块都对应了一个子矩阵和子向量，从而计算可分块独立进行，最后合并结果。分块矩阵格式如下：
+
+$$
+\tag{6}M = \begin{bmatrix}
 B_{11} & B_{12} & \cdots & B_{1K} \\
 B_{21} & B_{22} & \cdots & B_{2K} \\
 \vdots & \vdots & \ddots & \vdots \\
@@ -477,57 +392,200 @@ B_{K1} & B_{K2} & \cdots & B_{KK}
 \mathbf{v}_2 \\
 \vdots \\
 \mathbf{v}_K
-\end{bmatrix}$
+\end{bmatrix}
+$$
 
-**矩阵划分和子块定义：**
 
-将节点集划分为K个子集，并构建子矩阵，每个子矩阵B_ij包含从块i到块j的所有边，若块i有n_i个节点，块j有n_j个节点，则B_ij的维度为n_j×n_i。
-
-假设节点分为3块（K = 3)，则：
-
-$M = 
+**矩阵划分和子块定义：**将节点集划分为K个子集，并构建子矩阵，每个子矩阵B_ij包含从块i到块j的所有边，若块i有n_i个节点，块j有n_j个节点，则B_ij的维度为n_j×n_i。假设节点分为3块（K = 3)，则：
+$$
+\tag{7}M = 
 \begin{bmatrix}
 B_{11} & B_{12} & B_{13} \\
 B_{21} & B_{22} & B_{23} \\
 B_{31} & B_{32} & B_{33}
-\end{bmatrix}$
+\end{bmatrix}
+$$
 
-块 B_12​ 存储从块1节点到块2节点的所有转移概率。
+- 块 B_12 存储从块1节点到块2节点的所有转移概率。
 
-**分块后的PageRank迭代公式**
+**分块后的PageRank迭代公式：**将全局公式分解为块级计算：1j 是块 j 的全1向量，每个块的更新仅依赖其他块的PageRank子向量 vi(k)。
+$$
+\tag{8}\mathbf{v}_j^{(k+1)} = \frac{1-d}{N} \mathbf{1}_j + d \sum_{i=1}^{K} B_{ji} \cdot \mathbf{v}_i^{(k)}
+$$
 
-将全局公式分解为块级计算：1j​ 是块 j 的全1向量，每个块的更新仅依赖其他块的PageRank子向量 vi(k)​。
 
-$\mathbf{v}_j^{(k+1)} = \frac{1-d}{N} \mathbf{1}_j + d \sum_{i=1}^{K} B_{ji} \cdot \mathbf{v}_i^{(k)}$
+分块后，局部性增强，每个块的计算可独立进行，适合分布式并行，**计算某个块的时候仅需加载当前块的子矩阵和关联的子向量**。那么综上所述，我们将节点集分为K块之后，最终的PageRank公式可以表示为:
+$$
+\tag{9}\mathbf{pr}^{(k+1)} = \frac{1-d}{N} \mathbf{1} + d \cdot \left( \sum_{i=1}^{K} B_{1i} \mathbf{v}_i^{(k)}, \sum_{i=1}^{K} B_{2i} \mathbf{v}_i^{(k)}, \dots, \sum_{i=1}^{K} B_{Ki} \mathbf{v}_i^{(k)} \right)^T
+$$
 
-**分块后，局部性增强**：每个块的计算可独立进行，适合分布式并行，计算某个块的时候仅需加载当前块的子矩阵和关联的子向量。
-
-那么综上所述，我们
 
 #### 优化设计
 
-$\mathbf{pr}^{(k+1)} = \frac{1-d}{N} \mathbf{1} + d \cdot \left( \sum_{i=1}^{K} B_{1i} \mathbf{v}_i^{(k)}, \sum_{i=1}^{K} B_{2i} \mathbf{v}_i^{(k)}, \dots, \sum_{i=1}^{K} B_{Ki} \mathbf{v}_i^{(k)} \right)^T$
+==分块文件存储== 由于传统的稀疏矩阵仍然需要一次性加载全量数据，无法应对内存不足的问题，且难以高效拆分到多节点进行并行处理，**我们采用分块文件存储来代替传统的稀疏矩阵**，在吸取了稀疏矩阵只存储非零值及索引从而减少内存占用优势的同时，将数据采用分块文件存储，通过**分块加载**和**按需访问**，既保证了计算的正确性，又优化了内存占用及扩展性。为了提高内存访问的局部性，采用**哈希分块策略，**将节点按照目标节点进行分块，从而确保同一块内的边目标节点集中。每个块文件存储源节点和目标节点的原始边数据，并使用二进制格式提高读写效率，在进行迭代计算的时候，仅仅加载在当前处理的块数据到内存。
 
-$n^2 \cdot \text{sizeof(double)} \leq M$
+==迭代遍历== 全局使用**两次遍历**，首次遍历所有块，建立节点ID到连续索引的映射表`id_map`，第二次遍历则统计每个节点的出度，并据此对节点集合进行分块，最后使用分块迭代，逐块的加载边数据，计算当前块对目标节点的贡献，更新pagerank值。**针对死胡同节点，**计算所有出度为0的节点的总概率，并统一添加到基值中，避免了添加大量虚拟边的开销。
 
-$P = 
-\begin{bmatrix}
-\begin{array}{c|c}
-B_{11} & B_{12} \\
-\hline
-B_{21} & B_{22}
-\end{array}
-\end{bmatrix}$
+==并行优化== 在并行优化层面，算法通过多层次并行化策略与内存访问模式重构显著提升计算吞吐量。基于OpenMP的细粒度并行设计，首先采用**数据并行**与**任务并行**混合范式：基础值初始化阶段通过NUMA感知的线程绑定策略，将`pr_new`数组按内存页对齐切分至不同线程，确保线程局部性并减少跨核缓存同步开销。分块矩阵计算阶段采用动态任务调度（`schedule(dynamic)`），结合**生产者-消费者模型**实现计算与I/O流水线化
+
+
 
 ### 具体实现
 
+#### 分块预处理
 
+将原始边数据按目标节点分块存储到磁盘。具体实现中，首先检查并创建块存储目录`blocks/`，然后遍历输入文件中的每条边`(u, v)`，根据目标节点`v`的哈希值（`v % NUM_BLOCKS`）将边分配到对应的块文件。例如，当`NUM_BLOCKS=100`时，目标节点`v=12345`会被写入`block_45.dat`。使用二进制格式存储`u`和`v`的整数值，提升存储效率。这一设计的目标是将大规模数据拆分为多个小块，减少单次内存占用，并为后续的并行计算和分布式处理提供基础。
+
+```C++
+void PageRank_block::preprocessData(const std::string& input_file) {
+    struct stat info;
+    if(stat("blocks", &info) != 0) {
+        system("mkdir -p blocks");
+        std::vector<std::ofstream> block_files(NUM_BLOCKS);
+        for(int i = 0; i < NUM_BLOCKS; ++i) {
+            std::string filename = "blocks/block_" + std::to_string(i) + ".dat";
+            block_files[i].open(filename, std::ios::binary);
+        }
+        std::ifstream fin(input_file);
+        int u, v;
+        while(fin >> u >> v) {
+            int block_id = (v % NUM_BLOCKS + NUM_BLOCKS) % NUM_BLOCKS;
+            block_files[block_id].write(reinterpret_cast<char*>(&u), sizeof(int));
+            block_files[block_id].write(reinterpret_cast<char*>(&v), sizeof(int));
+        }
+    }
+}
+```
+
+
+
+#### 块数据加载与内存管理
+
+通过读取二进制文件，将源节点和目标节点列表解析到`BlockData`结构中。例如，加载`block_5.dat`时，会逐条读取边数据并填充到`src_list`和`dst_list`。这种按需加载的方式避免了全量数据的内存占用，使得单次内存需求从`O(E)`降至`O(E/K)`（`K`为块数）。二进制解析进一步减少了文本处理的开销，提升加载速度。
+
+```C++
+PageRank_block::BlockData PageRank_block::loadBlock(int block_id) const {
+    BlockData block;
+    std::string filename = "blocks/block_" + std::to_string(block_id) + ".dat";
+    std::ifstream fin(filename, std::ios::binary);
+    int u, v;
+    while(fin.read(reinterpret_cast<char*>(&u), sizeof(int))) {
+        fin.read(reinterpret_cast<char*>(&v), sizeof(int));
+        block.src_list.push_back(u);
+        block.dst_list.push_back(v);
+    }
+    return block;
+}
+```
+
+
+
+#### 图结构构建与节点映射
+
+通过两次遍历块文件完成图结构的构建。第一次遍历收集所有节点并建立原始ID到连续内部ID的映射（如`1001→0`，`2002→1`），维护`id_map`和`original_ids`实现双向查找。第二次遍历统计每个源节点的出度，填充`out_degree`数组。这种分离遍历的设计避免了混合操作的缓存抖动，同时压缩稀疏的原始ID为连续整数，减少内存占用。
+
+```C++
+void PageRank_block::buildGraphStructure() {
+    // 建立ID映射
+    for(int blk = 0; blk < NUM_BLOCKS; ++blk) {
+        BlockData block = loadBlock(blk);
+        for(size_t i = 0; i < block.src_list.size(); ++i) {
+            int src = block.src_list[i], dst = block.dst_list[i];
+            if(!id_map.count(src)) id_map[src] = node_count++;
+            if(!id_map.count(dst)) id_map[dst] = node_count++;
+        }
+    }
+    
+    // 初始化数据结构
+    original_ids.resize(node_count);
+    out_degree.assign(node_count, 0);
+    for(auto &kv : id_map) original_ids[kv.second] = kv.first;
+
+    // 统计出度
+    for(int blk = 0; blk < NUM_BLOCKS; ++blk) {
+        BlockData block = loadBlock(blk);
+        for(int src : block.src_list) {
+            int mapped_src = id_map[src];
+            ++out_degree[mapped_src];
+        }
+    }
+}
+```
+
+
+
+#### 迭代计算与并行优化
+
+首先显式统计所有死胡同节点的总贡献`S_dead`，并通过`base`值统一处理。随后遍历每个块文件，逐条计算源节点对目标节点的贡献。迭代计算时，每个块文件通过`loadBlock`函数按需加载到内存。块内边的目标节点因哈希分块（`v % NUM_BLOCKS`）而集中存储，例如块5包含所有目标节点ID末两位为05的边。这种局部性使得同一块内目标节点的访问模式连续，提升CPU缓存命中率。
+
+加载后的边数据存储在`BlockData`结构中，包含源节点列表`src_list`和目标节点列表`dst_list`。并通过OpenMP指令`#pragma omp parallel for schedule(dynamic)`实现多线程并行，`schedule(dynamic)`允许动态分配块任务到线程，避免因块间计算量不均（如某些块边数远多于其他块）导致的负载倾斜。在计算贡献时，对目标节点的PageRank更新需通过原子操作。 判断迭代是否终止的过程同样通过OpenMP的归约操作（`reduction(+:diff)`）实现并行求和，保证结果的正确性。
+
+```C++
+double PageRank_block::computeIteration() {
+    const int N = node_count;
+    std::vector<double> pr_new(N);
+    double S_dead = 0.0;
+
+    // 死节点贡献计算
+    #ifdef OPENMP_ENABLED
+    #pragma omp parallel for reduction(+:S_dead)
+    #endif
+    for(int i = 0; i < N; ++i) {
+        if(out_degree[i] == 0) S_dead += pr[i];
+    }
+
+    const double base = (1.0 - DAMPING) / N + DAMPING * S_dead / N;
+    
+    // 基础值初始化
+    #ifdef OPENMP_ENABLED
+    #pragma omp parallel for
+    #endif
+    for(int i = 0; i < N; ++i) pr_new[i] = base;
+
+    // 分块矩阵计算
+    #ifdef OPENMP_ENABLED
+    #pragma omp parallel for schedule(dynamic)
+    #endif
+    for(int blk = 0; blk < NUM_BLOCKS; ++blk) {
+        BlockData block = loadBlock(blk);
+        for(size_t i = 0; i < block.dst_list.size(); ++i) {
+            int src = block.src_list[i];
+            int dst = block.dst_list[i];
+            const int mapped_src = id_map[src];
+            const int mapped_dst = id_map[dst];
+            
+            if(out_degree[mapped_src] > 0) {
+                const double contrib = DAMPING * pr[mapped_src] / out_degree[mapped_src];
+                #ifdef OPENMP_ENABLED
+                #pragma omp atomic
+                #endif
+                pr_new[mapped_dst] += contrib;
+            }
+        }
+    }
+
+    // 收敛性检查
+    double diff = 0.0;
+    #ifdef OPENMP_ENABLED
+    #pragma omp parallel for reduction(+:diff)
+    #endif
+    for(int i = 0; i < N; ++i) diff += fabs(pr_new[i] - pr[i]);
+    pr.swap(pr_new);
+    return diff;
+}
+```
+
+核心计算阶段的时间复杂度为𝑂(𝑇⋅(𝑁+𝐸)) ，其中𝑇 为迭代次数，𝑁 为节点数，𝐸 为边数。空间复杂度为𝑂(𝑁+𝑀/𝐵) ，𝑀 为总边数据量，𝐵 为分块大小，pr/pr_new向量占𝑂(𝑁) ，分块加载策略将边数据内存峰值降至𝑂(𝑀/𝐵) ，而节点映射表与出度数组的哈希结构优化为连续数组存储，消除指针开销，空间占用严格约束为𝑂(𝑁) 。分块算法在时间-空间权衡中实现强线性扩展，符合BSP模型的理论边界。
+
+> [!caution]
+>
+> 需要注意的是，OpenMP的隐式线程管理可能引入线程竞争、伪共享引发的缓存抖动及NUMA非局部访问，同步屏障和动态调度加剧负载不均衡与原子操作开销。
 
 
 
 ## 实验结果
 
-本实验通过设定标准参数（阻尼因子0.85、收敛阈值1e-8、最大迭代100次）系统评估了NetworkX标准库、基础PageRank算法及分块优化算法在节点重要性排序精度、参数敏感性以及时空效率三个维度的性能表现，并验证了分块并行化策略对计算资源利用的优化效果。
+本实验通过设定标准参数系统评估了基础PageRank算法及分块优化算法在**节点重要性排序精度、参数敏感性以及时空效率三个维度**的性能表现，并验证了分块并行化策略对计算资源利用的优化效果。
 
 ### pagerank 值对比分析
 
@@ -573,7 +631,7 @@ B_{21} & B_{22}
 
 
 
-实验数据揭示了算法优化策略对计算资源的差异化影响。Block方法通过内存分块技术将内存占用降低34.6% ，但时间成本增加41.7% ，**这表明分块策略在减少内存占用的同时引入了额外的数据调度开销。**引人注目的是Block+OpenMP方案，通过结合内存分块与并行计算，不仅将时间效率提升13.9%（相对于Basic方案），同时保持与原始方案相当的内存占用水平（7.43MB vs 7.59MB），验证了并行化对分块策略的补偿效应。
+实验数据揭示了算法优化策略对计算资源的差异化影响。Block方法通过内存分块技术将内存占用降低34.6% ，但时间成本增加41.7% ，**这表明分块策略在减少内存占用的同时引入了额外的数据调度开销。**引人注目的是Block+OpenMP方案，通过结合内存分块与并行计算，不仅将时间效率提升13.9%（相对于Basic方案），同时保持与原始方案相当的内存占用水平（**由于OpenMP本身的特性，也带来了较大的内存开销**），验证了并行化对分块策略的补偿效应。 
 
 OpenMP的多线程机制将原本串行的分块处理过程转化为并行流水线，使内存访问延迟与计算过程重叠。值得注意的是，Block方案的时间惩罚主要来自分块边界的数据同步开销，而Block+OpenMP通过并行任务调度将这部分开销转化为可利用的计算资源。
 

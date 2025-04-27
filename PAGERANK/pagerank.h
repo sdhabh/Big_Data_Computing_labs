@@ -2,9 +2,9 @@
 #ifndef PAGERANK_H
 #define PAGERANK_H
 
-//#define BASIC_VERSION
-//#define ENABLE_EDGE_DEDUP
-#define OPENMP_ENABLED
+#define BASIC_VERSION     // 选择是基础算法版本还是分块矩阵优化版本
+//#define ENABLE_EDGE_DEDUP  // 在基础算法里启用边去重功能
+//#define OPENMP_ENABLED      // 在分块算法里启用OpenMP并行计算
 
 #include <vector>
 #include <unordered_map>
@@ -14,7 +14,6 @@
 #include <cmath>
 #include <algorithm>
 #include <iomanip>
-#include <iostream>
 #ifdef OPENMP_ENABLED
 #include <omp.h>
 #endif
@@ -56,10 +55,8 @@ class PageRank_basic {
         #endif
         // PageRank值存储
         std::unordered_map<int, double> pr_;
-    
         // 初始化PageRank值
         void initializeRank();
-        
         // 归一化处理
         void normalize();
     };

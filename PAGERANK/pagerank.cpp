@@ -1,5 +1,6 @@
 // pagerank.cpp
 #include "pagerank.h"
+
 #include <cstdlib>
 #include <sys/stat.h>
 
@@ -82,8 +83,8 @@ void PageRank_basic::calculate() {
 
         // 收敛检查
         if (diff < EPS) {
-            std::cerr << "Converged at iteration: " << iter + 1 
-                     << " (diff=" << diff << ")\n";
+            // std::cerr << "Converged at iteration: " << iter + 1 
+            //          << " (diff=" << diff << ")\n";
             break;
         }
     }
@@ -104,11 +105,11 @@ void PageRank_basic::printTopK() const {
     // 将结果输出到 result.txt 文件
     std::ofstream outFile("Res.txt"); // 创建文件输出流
     if (!outFile) {
-        std::cerr << "Failed to open result.txt for writing." << std::endl;
+        // std::cerr << "Failed to open result.txt for writing." << std::endl;
         return;
     }
 
-    outFile << "/******pagerank_block_result******/ \n";
+    outFile << "/******pagerank_basic_result******/ \n";
 
     outFile << "nodeID\tPageRank\n"; // 写入表头
     const int output_size = std::min(TOP_K, static_cast<int>(results.size()));
@@ -254,7 +255,7 @@ void PageRank_block::calculate(const std::string& input_file) {
     for(int iter = 0; iter < MAX_ITER; ++iter) {
         double diff = computeIteration();
         if(diff < EPS) {
-            std::cerr << "Converged at iteration " << iter + 1 << '\n';
+            // std::cerr << "Converged at iteration " << iter + 1 << '\n';
             break;
         }
     }
@@ -314,7 +315,7 @@ int main() {
         pr.printTopK();
 #endif
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        // std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
     return 0;
