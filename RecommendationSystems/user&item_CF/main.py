@@ -13,8 +13,16 @@ def main():
     model = UserCF(n_neighbors=20, min_similarity=0)
     
     print("开始训练模型...")
-    model.fit(train_file)
+    # 训练模型并获取验证集
+    validation_data = model.fit(train_file, validation_ratio=0.2)
     print("模型训练完成！")
+    
+    # 在验证集上评估模型
+    print("\n在验证集上评估模型性能...")
+    mae, rmse = model.evaluate(validation_data)
+    print(f"验证集评估结果：")
+    print(f"MAE (平均绝对误差): {mae:.2f}")
+    print(f"RMSE (均方根误差): {rmse:.2f}")
     
     # 对测试集中的每个用户-物品对进行预测
     print("\n开始预测测试集中的评分...")
