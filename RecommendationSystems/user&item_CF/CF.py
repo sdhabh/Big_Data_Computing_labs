@@ -4,15 +4,32 @@ from collections import defaultdict
 from sklearn.metrics.pairwise import cosine_similarity
 import random
 
+def pearson_similarity(matrix):
+    """计算皮尔逊相关系数相似度矩阵"""
+    # 计算每个向量的均值
+    mean = np.mean(matrix, axis=1, keepdims=True)
+    # 中心化
+    centered = matrix - mean
+    # 计算标准差
+    std = np.sqrt(np.sum(centered ** 2, axis=1, keepdims=True))
+    # 避免除以0
+    std[std == 0] = 1
+    # 标准化
+    normalized = centered / std
+    # 计算相关系数
+    return np.dot(normalized, normalized.T)
+
 class UserCF:
-    def __init__(self, n_neighbors=20, min_similarity=0):
+    def __init__(self, n_neighbors=20, min_similarity=0, similarity_method='cosine'):
         self.n_neighbors = n_neighbors  # 邻居数量
         self.min_similarity = min_similarity  # 最小相似度阈值
+        self.similarity_method = similarity_method  # 相似度计算方法
         self.user_item_matrix = None  # 用户-物品评分矩阵
         self.user_similarity = None  # 用户相似度矩阵
         self.user_ratings = None  # 用户评分字典
         self.item_ratings = None  # 物品评分字典
         self.mean_ratings = None  # 用户平均评分
+        self.global_mean_rating = 0  # 全局平均评分
 
     def fit(self, train_file):
         """训练模型"""
@@ -20,6 +37,7 @@ class UserCF:
         self.user_ratings = defaultdict(dict)
         self.item_ratings = defaultdict(dict)
         current_user = None
+        all_ratings = []  # 存储所有评分用于计算全局平均分
 
         with open(train_file, 'r', encoding='utf-8') as f:
             for line in f:
@@ -34,6 +52,10 @@ class UserCF:
                         score = int(score)
                         self.user_ratings[current_user][item_id] = score
                         self.item_ratings[item_id][current_user] = score
+                        all_ratings.append(score)
+
+        # 计算全局平均分
+        self.global_mean_rating = np.mean(all_ratings) if all_ratings else 0
 
         # 计算用户平均评分
         self.mean_ratings = {}
@@ -61,7 +83,12 @@ class UserCF:
                     self.user_item_matrix[user_idx, item_idx] = rating
 
         # 计算用户相似度矩阵
-        self.user_similarity = cosine_similarity(self.user_item_matrix)
+        if self.similarity_method == 'cosine':
+            self.user_similarity = cosine_similarity(self.user_item_matrix)
+        elif self.similarity_method == 'pearson':
+            self.user_similarity = pearson_similarity(self.user_item_matrix)
+        else:
+            raise ValueError(f"不支持的相似度计算方法: {self.similarity_method}")
 
     def evaluate(self, validation_file):
         """评估模型性能"""
@@ -95,11 +122,9 @@ class UserCF:
 
     def predict(self, user_id, item_id):
         """预测用户对物品的评分"""
-        if item_id not in self.item_to_idx:
-            return self.mean_ratings.get(user_id, 0)  # 如果物品不在训练集中，返回用户平均分
-        
-        if user_id not in self.user_to_idx:
-            return self.mean_ratings.get(user_id, 0)  # 如果用户不在训练集中，返回用户平均分
+        # 冷启动处理：如果用户或物品不在训练集中，返回全局平均分
+        if item_id not in self.item_to_idx or user_id not in self.user_to_idx:
+            return self.global_mean_rating
 
         user_idx = self.user_to_idx[user_id]
         item_idx = self.item_to_idx[item_id]
@@ -117,7 +142,7 @@ class UserCF:
         similar_users = similar_users[:self.n_neighbors]
 
         if not similar_users:
-            return self.mean_ratings.get(user_id, 0)
+            return self.global_mean_rating
 
         # 计算预测评分
         numerator = 0
@@ -128,20 +153,22 @@ class UserCF:
             denominator += abs(similarity)
 
         if denominator == 0:
-            return self.mean_ratings.get(user_id, 0)
+            return self.global_mean_rating
 
         predicted_rating = self.mean_ratings[user_id] + numerator / denominator
         return max(0, min(100, predicted_rating))  # 确保评分在0-100之间
 
 class ItemCF:
-    def __init__(self, n_neighbors=20, min_similarity=0):
+    def __init__(self, n_neighbors=20, min_similarity=0, similarity_method='cosine'):
         self.n_neighbors = n_neighbors  # 邻居数量
         self.min_similarity = min_similarity  # 最小相似度阈值
+        self.similarity_method = similarity_method  # 相似度计算方法
         self.item_user_matrix = None  # 物品-用户评分矩阵
         self.item_similarity = None  # 物品相似度矩阵
         self.user_ratings = None  # 用户评分字典
         self.item_ratings = None  # 物品评分字典
         self.mean_ratings = None  # 物品平均评分
+        self.global_mean_rating = 0  # 全局平均评分
 
     def fit(self, train_file):
         """训练模型"""
@@ -149,6 +176,7 @@ class ItemCF:
         self.user_ratings = defaultdict(dict)
         self.item_ratings = defaultdict(dict)
         current_user = None
+        all_ratings = []  # 存储所有评分用于计算全局平均分
 
         with open(train_file, 'r', encoding='utf-8') as f:
             for line in f:
@@ -163,6 +191,10 @@ class ItemCF:
                         score = int(score)
                         self.user_ratings[current_user][item_id] = score
                         self.item_ratings[item_id][current_user] = score
+                        all_ratings.append(score)
+
+        # 计算全局平均分
+        self.global_mean_rating = np.mean(all_ratings) if all_ratings else 0
 
         # 计算物品平均评分
         self.mean_ratings = {}
@@ -190,7 +222,12 @@ class ItemCF:
                     self.item_user_matrix[item_idx, user_idx] = rating
 
         # 计算物品相似度矩阵
-        self.item_similarity = cosine_similarity(self.item_user_matrix)
+        if self.similarity_method == 'cosine':
+            self.item_similarity = cosine_similarity(self.item_user_matrix)
+        elif self.similarity_method == 'pearson':
+            self.item_similarity = pearson_similarity(self.item_user_matrix)
+        else:
+            raise ValueError(f"不支持的相似度计算方法: {self.similarity_method}")
 
     def evaluate(self, validation_file):
         """评估模型性能"""
@@ -224,11 +261,9 @@ class ItemCF:
 
     def predict(self, user_id, item_id):
         """预测用户对物品的评分"""
-        if item_id not in self.item_to_idx:
-            return self.mean_ratings.get(item_id, 0)  # 如果物品不在训练集中，返回物品平均分
-        
-        if user_id not in self.user_to_idx:
-            return self.mean_ratings.get(item_id, 0)  # 如果用户不在训练集中，返回物品平均分
+        # 冷启动处理：如果用户或物品不在训练集中，返回全局平均分
+        if item_id not in self.item_to_idx or user_id not in self.user_to_idx:
+            return self.global_mean_rating
 
         item_idx = self.item_to_idx[item_id]
         user_idx = self.user_to_idx[user_id]
@@ -246,7 +281,7 @@ class ItemCF:
         similar_items = similar_items[:self.n_neighbors]
 
         if not similar_items:
-            return self.mean_ratings.get(item_id, 0)
+            return self.global_mean_rating
 
         # 计算预测评分
         numerator = 0
@@ -257,7 +292,7 @@ class ItemCF:
             denominator += abs(similarity)
 
         if denominator == 0:
-            return self.mean_ratings.get(item_id, 0)
+            return self.global_mean_rating
 
         predicted_rating = self.mean_ratings[item_id] + numerator / denominator
         return max(0, min(100, predicted_rating))  # 确保评分在0-100之间 

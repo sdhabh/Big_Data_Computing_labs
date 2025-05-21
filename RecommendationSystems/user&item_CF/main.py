@@ -106,9 +106,13 @@ def run_model(model, model_name, train_file, val_file, test_file, output_dir):
 
 def main():
     print_section_title("协同过滤推荐系统")
+    n_neighbors = 20
+    min_similarity = 0
+    similarity_method = 'pearson'  # pearson cosine
     print("系统配置：")
-    print(f"├─ 邻居数量 (n_neighbors): 20")
-    print(f"└─ 最小相似度阈值 (min_similarity): 0\n")
+    print(f"├─ 邻居数量 (n_neighbors): {n_neighbors}")
+    print(f"├─ 最小相似度阈值 (min_similarity): {min_similarity}")
+    print(f"└─ 相似度计算方法 (similarity_method): {similarity_method}\n")
     
     # 获取当前文件所在目录
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -122,13 +126,14 @@ def main():
     output_dir = os.path.join(current_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
     
-    # 运行UserCF模型
-    user_cf_model = UserCF(n_neighbors=20, min_similarity=0)
+    # 运行UserCF模型 
+    user_cf_model = UserCF(n_neighbors, min_similarity, similarity_method)
     run_model(user_cf_model, "UserCF", train_file, val_file, test_file, output_dir)
     
-    # 运行ItemCF模型
-    item_cf_model = ItemCF(n_neighbors=20, min_similarity=0)
+    # 运行ItemCF模型 
+    item_cf_model = ItemCF(n_neighbors, min_similarity, similarity_method)
     run_model(item_cf_model, "ItemCF", train_file, val_file, test_file, output_dir)
+    
     
     print_section_title("运行完成")
     print(" 所有模型运行完成！预测结果已保存在output目录下。")
