@@ -1,31 +1,67 @@
 import os
-from user_cf import UserCF
+import time
+import psutil
+from CF import UserCF, ItemCF
 
-def main():
-    # 获取当前文件所在目录
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+def get_display_width(text):
+    """计算字符串的显示宽度，中文字符计为2个宽度"""
+    width = 0
+    for char in text:
+        if ord(char) > 127:  # 中文字符
+            width += 2
+        else:  # 英文字符
+            width += 1
+    return width
+
+def print_separator(char='=', length=50):
+    """打印分隔线"""
+    print(char * length)
+
+def print_section_title(title):
+    """打印带格式的标题，支持中文字符居中"""
+    width = 50
+    title_width = get_display_width(title)
+    left_padding = (width - title_width) // 2
+    right_padding = width - title_width - left_padding
     
-    # 构建训练集和测试集的文件路径
-    train_file = os.path.join(os.path.dirname(current_dir), "user&item_CF", "data", "train.txt")
-    test_file = os.path.join(os.path.dirname(current_dir), "user&item_CF", "data", "test.txt")
+    print_separator()
+    print(' ' * left_padding + title + ' ' * right_padding)
+    print_separator()
+
+def run_model(model, model_name, train_file, val_file, test_file, output_dir):
+    print_section_title(f"{model_name} 模型训练与评估")
     
-    # 创建UserCF模型实例
-    model = UserCF(n_neighbors=20, min_similarity=0)
-    
-    print("开始训练模型...")
-    # 训练模型并获取验证集
-    validation_data = model.fit(train_file, validation_ratio=0.2)
-    print("模型训练完成！")
+    # 训练模型
+    print(f"[1/3] 开始训练{model_name}模型...")
+    process = psutil.Process(os.getpid())
+    start_time = time.time()
+    start_memory = process.memory_info().rss if process else 0
+    model.fit(train_file)
+    time_used = time.time() - start_time
+    end_memory = process.memory_info().rss if process else 0
+    memory_used = (end_memory - start_memory) / (1024 ** 2)  # 转换为MB
+    print(f"✓ {model_name}模型训练完成！")
+    print(f"├─ 耗时: {time_used:.2f} 秒")
+    print(f"└─ 内存消耗: {memory_used:.2f} MB")
     
     # 在验证集上评估模型
-    print("\n在验证集上评估模型性能...")
-    mae, rmse = model.evaluate(validation_data)
-    print(f"验证集评估结果：")
-    print(f"MAE (平均绝对误差): {mae:.2f}")
-    print(f"RMSE (均方根误差): {rmse:.2f}")
+    print(f"\n[2/3] 在验证集上评估{model_name}模型性能...")
+    eval_start_time = time.time()
+    eval_start_memory = process.memory_info().rss if process else 0
+    mae, rmse = model.evaluate(val_file)
+    eval_time = time.time() - eval_start_time
+    eval_end_memory = process.memory_info().rss if process else 0
+    eval_memory = (eval_end_memory - eval_start_memory) / (1024 ** 2)
+    print("验证集评估结果：")
+    print(f"├─ MAE (平均绝对误差): {mae:.2f}")
+    print(f"├─ RMSE (均方根误差): {rmse:.2f}")
+    print(f"├─ 评估耗时: {eval_time:.2f} 秒")
+    print(f"└─ 评估内存消耗: {eval_memory:.2f} MB")
     
     # 对测试集中的每个用户-物品对进行预测
-    print("\n开始预测测试集中的评分...")
+    print(f"\n[3/3] 开始使用{model_name}预测测试集中的评分...")
+    predict_start_time = time.time()
+    predict_start_memory = process.memory_info().rss if process else 0
     current_user = None
     predictions = []
     
@@ -47,17 +83,55 @@ def main():
                         predictions.append((current_user, item_id, predicted_rating))
     
         # 将预测结果保存到文件
-        output_file = os.path.join(current_dir, "output.txt")
+        output_file = os.path.join(output_dir, f"{model_name.lower()}_output.txt")
         with open(output_file, 'w', encoding='utf-8') as f:
             for user_id, item_id, pred_rating in predictions:
                 f.write(f"{user_id}\t{item_id}\t{pred_rating:.2f}\n")
         
-        print(f"\n预测完成！预测结果已保存到：{output_file}")
+        predict_time = time.time() - predict_start_time
+        predict_end_memory = process.memory_info().rss if process else 0
+        predict_memory = (predict_end_memory - predict_start_memory) / (1024 ** 2)
+        total_memory = (predict_end_memory - start_memory) / (1024 ** 2)
+        
+        print(f"✓ {model_name}预测完成！")
+        print(f"├─ 预测耗时: {predict_time:.2f} 秒")
+        print(f"├─ 预测内存消耗: {predict_memory:.2f} MB")
+        print(f"├─ 总内存消耗: {total_memory:.2f} MB")
+        print(f"└─ 预测结果已保存到：{output_file}\n")
         
     except Exception as e:
-        print(f"处理文件时发生错误：{str(e)}")
-        print(f"当前处理的行：{line}")
-        print(f"当前用户：{current_user}")
+        print(f"\n❌ 处理文件时发生错误：{str(e)}")
+        print(f"├─ 当前处理的行：{line}")
+        print(f"└─ 当前用户：{current_user}")
+
+def main():
+    print_section_title("协同过滤推荐系统")
+    print("系统配置：")
+    print(f"├─ 邻居数量 (n_neighbors): 20")
+    print(f"└─ 最小相似度阈值 (min_similarity): 0\n")
+    
+    # 获取当前文件所在目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # 构建训练集、验证集和测试集的文件路径
+    train_file = os.path.join(current_dir, "data", "train_split.txt")
+    val_file = os.path.join(current_dir, "data", "val_split.txt")
+    test_file = os.path.join(current_dir, "data", "test.txt")
+    
+    # 创建输出目录
+    output_dir = os.path.join(current_dir, "output")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 运行UserCF模型
+    user_cf_model = UserCF(n_neighbors=20, min_similarity=0)
+    run_model(user_cf_model, "UserCF", train_file, val_file, test_file, output_dir)
+    
+    # 运行ItemCF模型
+    item_cf_model = ItemCF(n_neighbors=20, min_similarity=0)
+    run_model(item_cf_model, "ItemCF", train_file, val_file, test_file, output_dir)
+    
+    print_section_title("运行完成")
+    print(" 所有模型运行完成！预测结果已保存在output目录下。")
 
 if __name__ == "__main__":
     main() 
