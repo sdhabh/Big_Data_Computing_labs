@@ -330,6 +330,107 @@ predicted_rating = self.mean_ratings[user_id] + numerator / denominator
 
 
 
+### 算法原理
+
+Item-Based协同过滤（Item-Based CF）的核心假设是**相似物品可能获得同一用户的相近评分**。与User-Based CF的用户相似性驱动不同，其以物品为分析主体，通过挖掘物品间的共现评分模式构建推荐模型。输入数据同样基于用户-物品评分矩阵，但建模焦点转向物品维度，构建**物品-用户评分矩阵**，矩阵元素*R_{i,u}*表示用户𝑢对物品𝑖的评分，未评分项作为预测目标。
+
+物品相似性度量聚焦于共同评分用户的偏好一致性，主要方法和user_CF相同，分为**余弦相似度**，直接计算物品评分向量的夹角余弦；**皮尔逊相关系数**，消除用户评分偏差，将评分中心化处理。其公式分别为：
+
+
+$$
+\sin(i,j)=\frac{\sum_{u\in U_{ij}}R_{i,u}\cdot R_{j,u}}{\sqrt{\sum R_{i,u}^2}\cdot\sqrt{\sum R_{j,u}^2}}\quad\sin(i,j)=\frac{\sum_{u\in U_{ij}}(R_{i,u}-\bar{R}_u)\cdot(R_{j,u}-\bar{R}_u)}{\sqrt{\sum(R_{i,u}-\bar{R}_u)^2}\cdot\sqrt{\sum(R_{j,u}-\bar{R}_u)^2}}
+$$
+
+其中，𝑈𝑖𝑗为同时对物品𝑖和𝑗评分的用户集合，𝑅_𝑢为用户𝑢的平均评分。相似度计算后形成物品相似度矩阵，用于后续邻居选择。预测用户𝑢对目标物品𝑖的评分时，执行两个步骤：1.**相似物品筛选**：从物品相似度矩阵中提取与𝑖最相似的𝑘个物品（阈值过滤后），构成邻居集合𝑁(𝑖)；2.**加权评分聚合**：基于用户𝑢对𝑁(𝑖)中物品的历史评分，计算加权预测值：
+$$
+   \hat{R}_{u,i}=\bar{R}_i+\frac{\sum_{j\in N(i)}\sin(i,j)\cdot(R_{u,j}-\bar{R}_j)}{\sum|\sin(i,j)|}
+$$
+
+其中，𝑅_𝑖为物品𝑖的平均评分，通过引入物品平均分消除热门物品的评分偏差。最终评分通过截断处理约束在合理范围（如0-100）。**冷启动处理**策略与User-Based CF对称：若目标物品或用户未出现在训练集中，直接返回全局平均分；若用户未对任何相似物品评分，则依赖物品平均分或全局均值填补。
+
+Item-Based CF适用于**物品数量相对稳定、用户行为动态性强**的场景（如新闻推荐、短视频流），其优势包括：
+
+- **计算效率高**：物品数通常远小于用户数，相似度矩阵规模更小；
+- **实时性优**：物品相似度可离线预计算，在线预测仅需局部加权；
+- **隐式反馈适配**：通过用户行为频次构建物品关联，增强可解释性。
+
+与User-Based CF形成互补，二者可根据业务特性选择或融合，以平衡推荐多样性、时效性与计算开销。
+
+
+
+### 代码实现
+
+> 注意：ItemCF在代码实现上和UserCF大抵相似，鉴于篇幅，下述只列举部分关键代码
+
+在数据加载与预处理层面，ItemCF首先从训练文件中加载用户-物品评分数据，构建物品-用户评分矩阵。这一步与UserCF类似，但ItemCF更关注物品之间的相似性,构建的是***物品-用户评分矩阵***。
+
+```python
+        # 填充评分矩阵
+        for item in self.item_ratings:
+            item_idx = self.item_to_idx[item]
+            for user, rating in self.item_ratings[item].items():
+                if user in self.user_to_idx:
+                    user_idx = self.user_to_idx[user]
+                    self.item_user_matrix[item_idx, user_idx] = rating
+```
+
+
+
+ItemCF的核心是计算物品之间的相似度。与UserCF不同，ItemCF使用**物品-用户评分矩阵**来计算物品相似度。
+
+```python
+# 计算物品相似度矩阵
+if self.similarity_method == 'cosine':
+    self.item_similarity = cosine_similarity(self.item_user_matrix)
+elif self.similarity_method == 'pearson':
+    self.item_similarity = pearson_similarity(self.item_user_matrix)
+else:
+    raise ValueError(f"不支持的相似度计算方法: {self.similarity_method}")
+```
+
+
+
+ItemCF的预测逻辑与UserCF不同。ItemCF通过用户已评分的物品来预测未评分物品的评分。具体来说，对于目标物品，找到与之最相似的物品，并根据用户对这些相似物品的评分来预测目标物品的评分。
+
+```python
+def predict(self, user_id, item_id):
+    # 冷启动处理：如果用户或物品不在训练集中，返回全局平均分
+    if item_id not in self.item_to_idx or user_id not in self.user_to_idx:
+        return self.global_mean_rating
+
+    item_idx = self.item_to_idx[item_id]
+    user_idx = self.user_to_idx[user_id]
+
+    # 获取物品的相似物品
+    similar_items = []
+    for other_item_idx, similarity in enumerate(self.item_similarity[item_idx]):
+        if other_item_idx != item_idx and similarity > self.min_similarity:
+            other_item_id = self.idx_to_item[other_item_idx]
+            if other_item_id in self.user_ratings[user_id]:
+                similar_items.append((other_item_id, similarity))
+
+    # 按相似度排序并选择top-N个邻居
+    similar_items.sort(key=lambda x: x[1], reverse=True)
+    similar_items = similar_items[:self.n_neighbors]
+
+    # 计算预测评分
+    numerator = 0
+    denominator = 0
+    for other_item_id, similarity in similar_items:
+        rating = self.user_ratings[user_id][other_item_id]
+        numerator += similarity * (rating - self.mean_ratings[other_item_id])
+        denominator += abs(similarity)
+
+    predicted_rating = self.mean_ratings[item_id] + numerator / denominator
+    return max(0, min(100, predicted_rating))  # 确保评分在0-100之间
+```
+
+
+
+**总结：**UserCF和ItemCF均基于协同过滤框架，分别通过用户-物品矩阵与物品-用户矩阵建模。UserCF计算用户间余弦/皮尔逊相似度，筛选高相似邻居用户，结合其评分偏差加权预测目标用户对物品的偏好，通过用户平均评分与全局均值处理冷启动；ItemCF则构建物品相似度网络，基于用户历史评分与相似物品的评分偏差聚合预测值，利用物品平均分进行校准。二者均采用MAE/RMSE评估预测误差，核心差异在于UserCF侧重用户行为关联性，而ItemCF聚焦物品共现模式，分别通过矩阵转置实现双向推荐逻辑。
+
+ 
+
 
 
 

@@ -108,7 +108,7 @@ def main():
     print_section_title("协同过滤推荐系统")
     n_neighbors = 20
     min_similarity = 0
-    similarity_method = 'pearson'  # pearson cosine
+    similarity_method = 'cosine'  # pearson cosine
     print("系统配置：")
     print(f"├─ 邻居数量 (n_neighbors): {n_neighbors}")
     print(f"├─ 最小相似度阈值 (min_similarity): {min_similarity}")
@@ -133,7 +133,6 @@ def main():
     # 运行ItemCF模型 
     item_cf_model = ItemCF(n_neighbors, min_similarity, similarity_method)
     run_model(item_cf_model, "ItemCF", train_file, val_file, test_file, output_dir)
-    
     
     print_section_title("运行完成")
     print(" 所有模型运行完成！预测结果已保存在output目录下。")
