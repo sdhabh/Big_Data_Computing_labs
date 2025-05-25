@@ -1,8 +1,10 @@
 import os
 import time
 import psutil
-from RecommendationSystems.CF.algorithm.UserCF import UserCF
-from RecommendationSystems.CF.algorithm.ItemCF import ItemCF
+from algorithm.UserCF import UserCF
+from algorithm.ItemCF import ItemCF
+from algorithm.GraphCF import GraphCF
+from algorithm.SlopeOne import SlopeOne
 
 def get_display_width(text):
     """计算字符串的显示宽度，中文字符计为2个宽度"""
@@ -134,6 +136,14 @@ def main():
     # 运行ItemCF模型 
     item_cf_model = ItemCF(n_neighbors, min_similarity, similarity_method)
     run_model(item_cf_model, "ItemCF", train_file, val_file, test_file, output_dir)
+
+    # 运行GraphCF模型
+    graph_cf_model = GraphCF()
+    run_model(graph_cf_model, "GraphCF", train_file, val_file, test_file, output_dir)
+    
+    # 运行SlopeOne模型
+    slope_one_model = SlopeOne()
+    run_model(slope_one_model, "SlopeOne", train_file, val_file, test_file, output_dir)
     
     print_section_title("运行完成")
     print(" 所有模型运行完成！预测结果已保存在output目录下。")
