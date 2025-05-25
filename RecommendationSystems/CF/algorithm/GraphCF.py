@@ -32,9 +32,11 @@ class GraphCF:
         self.user_mean_ratings = {}  # 用户平均评分
         self.item_mean_ratings = {}  # 物品平均评分
         self.global_mean = 0  # 全局平均评分
+        self.user_std = {}  # 用户评分标准差
+        self.item_std = {}  # 物品评分标准差
         
     def _normalize_ratings(self):
-        """归一化评分数据到[-1, 1]范围"""
+        """归一化评分数据，保持评分的相对差异"""
         print("正在归一化评分数据...")
         # 计算全局平均评分
         all_ratings = []
@@ -42,31 +44,42 @@ class GraphCF:
             all_ratings.extend(user_ratings.values())
         self.global_mean = np.mean(all_ratings) if all_ratings else 0
         
-        # 计算用户平均评分
+        # 计算用户统计信息
         for user_id, ratings in self.user_ratings.items():
-            self.user_mean_ratings[user_id] = np.mean(list(ratings.values()))
+            ratings_list = list(ratings.values())
+            self.user_mean_ratings[user_id] = np.mean(ratings_list)
+            # 处理标准差为0的情况
+            std = np.std(ratings_list)
+            self.user_std[user_id] = std if std > 0 else 1.0
         
-        # 计算物品平均评分
+        # 计算物品统计信息
         for item_id, ratings in self.item_ratings.items():
-            self.item_mean_ratings[item_id] = np.mean(list(ratings.values()))
+            ratings_list = list(ratings.values())
+            self.item_mean_ratings[item_id] = np.mean(ratings_list)
+            # 处理标准差为0的情况
+            std = np.std(ratings_list)
+            self.item_std[item_id] = std if std > 0 else 1.0
         
-        # 归一化评分到[-1, 1]范围
+        # 归一化评分，保持相对差异
         normalized_user_ratings = defaultdict(dict)
         normalized_item_ratings = defaultdict(dict)
         
-        rating_range = self.max_rating - self.min_rating
-        
         for user_id, ratings in self.user_ratings.items():
             user_mean = self.user_mean_ratings[user_id]
+            user_std = self.user_std[user_id]
+            
             for item_id, rating in ratings.items():
-                # 归一化到[-1, 1]范围
-                normalized_rating = (rating - user_mean) / (rating_range / 2)
+                # 使用Z-score归一化，保持评分的相对差异
+                # 当标准差为0时，使用简单的中心化
+                if user_std > 0:
+                    normalized_rating = (rating - user_mean) / user_std
+                else:
+                    normalized_rating = rating - user_mean
                 normalized_user_ratings[user_id][item_id] = normalized_rating
                 normalized_item_ratings[item_id][user_id] = normalized_rating
         
         self.user_ratings = normalized_user_ratings
         self.item_ratings = normalized_item_ratings
- 
         
     def _build_graph(self):
         """构建用户-物品二部图"""
@@ -90,12 +103,10 @@ class GraphCF:
         # 添加边（评分关系）
         for user_id, ratings in self.user_ratings.items():
             for item_id, rating in ratings.items():
-                # 使用评分的绝对值作为边的权重
-                self.G.add_edge(f'u_{user_id}', f'i_{item_id}', 
-                              weight=abs(rating))
+                # 使用评分的绝对值作为边的权重，并考虑用户和物品的评分分布
+                weight = abs(rating) * (1 + 0.1 * (self.user_std[user_id] + self.item_std[item_id]))
+                self.G.add_edge(f'u_{user_id}', f'i_{item_id}', weight=weight)
         
- 
-    
     def _build_transition_matrix(self):
         """构建转移概率矩阵"""
         print("正在构建转移概率矩阵...")
@@ -109,21 +120,25 @@ class GraphCF:
         # 计算转移概率
         for user_id, ratings in self.user_ratings.items():
             u_idx = self.user_map[user_id]
-            # 使用评分的绝对值计算权重
-            weights = [abs(r) for r in ratings.values()]
-            total_weight = sum(weights)
+            weights = []
+            items = []
             
-            if total_weight > 0:  # 避免除以零
-                for item_id, rating in ratings.items():
-                    i_idx = self.item_map[item_id] + n_users
-                    weight = abs(rating) / total_weight
+            for item_id, rating in ratings.items():
+                i_idx = self.item_map[item_id] + n_users
+                # 考虑用户和物品的评分分布
+                weight = abs(rating) * (1 + 0.1 * (self.user_std[user_id] + self.item_std[item_id]))
+                weights.append(weight)
+                items.append(i_idx)
+            
+            total_weight = sum(weights)
+            if total_weight > 0:
+                for i, item_idx in enumerate(items):
+                    weight = weights[i] / total_weight
                     # 用户到物品的转移概率
-                    self.P[u_idx, i_idx] = weight
+                    self.P[u_idx, item_idx] = weight
                     # 物品到用户的转移概率
-                    self.P[i_idx, u_idx] = weight
+                    self.P[item_idx, u_idx] = weight
         
- 
-    
     def _random_walk(self):
         """执行随机游走"""
         print(f"开始随机游走迭代（共 {self.n_iter} 次）...")
@@ -131,7 +146,7 @@ class GraphCF:
         scores = np.eye(n)  # 初始状态
         
         for i in range(self.n_iter):
-            # 随机游走更新
+            # 随机游走更新，增加分数传播的多样性
             scores = self.alpha * np.dot(scores, self.P) + (1 - self.alpha) * np.eye(n)
             
             # 显示进度
@@ -189,12 +204,14 @@ class GraphCF:
         # 获取用户-物品的相似度分数
         score = self.scores[u_idx, i_idx]
         
-        # 获取用户平均评分
+        # 获取用户和物品的统计信息
         user_mean = self.user_mean_ratings.get(user_id, self.global_mean)
+        user_std = self.user_std.get(user_id, 1.0)
+        item_mean = self.item_mean_ratings.get(item_id, self.global_mean)
+        item_std = self.item_std.get(item_id, 1.0)
         
-        # 将归一化分数转换回原始评分范围
-        rating_range = self.max_rating - self.min_rating
-        predicted_rating = user_mean + (score * (rating_range / 2))
+        # 综合考虑用户和物品的评分分布
+        predicted_rating = user_mean + score * user_std * 0.7 + (item_mean - self.global_mean) * 0.3
         
         # 限制预测评分在有效范围内
         predicted_rating = max(self.min_rating, min(self.max_rating, predicted_rating))
