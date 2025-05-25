@@ -3,9 +3,8 @@ import os
 import sys
 from collections import defaultdict
 
-from .builtin_datasets import BUILTIN_DATASETS, download_builtin_dataset
-
-from .reader import Reader
+from ..utils.builtin_datasets import BUILTIN_DATASETS, download_builtin_dataset
+from ..utils.reader import Reader
 from .trainset import Trainset
 
 

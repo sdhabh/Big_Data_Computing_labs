@@ -2,7 +2,7 @@ import pandas as pd
 from algorithm import Dataset, Reader
 from algorithm import SVD, SVDpp, NMF, SlopeOne, BaselineOnly
 from algorithm.model_selection import train_test_split
-from algorithm import accuracy
+from algorithm.utils import accuracy
 
 # 1. 读数据
 records = []

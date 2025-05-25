@@ -5,7 +5,7 @@ from math import ceil, floor
 
 import numpy as np
 
-from ..utils import get_rng
+from ..utils.utils import get_rng
 
 class KFold:
 

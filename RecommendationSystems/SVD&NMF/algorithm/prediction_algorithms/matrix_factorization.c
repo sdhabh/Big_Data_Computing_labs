@@ -2643,7 +2643,6 @@ static const char __pyx_k_range[] = "range";
 static const char __pyx_k_shape[] = "shape";
 static const char __pyx_k_start[] = "start";
 static const char __pyx_k_throw[] = "throw";
-static const char __pyx_k_utils[] = "utils";
 static const char __pyx_k_zeros[] = "zeros";
 static const char __pyx_k_biased[] = "biased";
 static const char __pyx_k_double[] = "double";
@@ -2729,6 +2728,7 @@ static const char __pyx_k_PickleError[] = "PickleError";
 static const char __pyx_k_all_ratings[] = "all_ratings";
 static const char __pyx_k_global_mean[] = "global_mean";
 static const char __pyx_k_predictions[] = "predictions";
+static const char __pyx_k_utils_utils[] = "utils.utils";
 static const char __pyx_k_NMF_estimate[] = "NMF.estimate";
 static const char __pyx_k_SVD_estimate[] = "SVD.estimate";
 static const char __pyx_k_SVDpp___init[] = "SVDpp.__init__";
@@ -2993,7 +2993,7 @@ static PyObject *__pyx_n_s_update;
 static PyObject *__pyx_n_s_ur;
 static PyObject *__pyx_n_s_user_denom;
 static PyObject *__pyx_n_s_user_num;
-static PyObject *__pyx_n_s_utils;
+static PyObject *__pyx_n_s_utils_utils;
 static PyObject *__pyx_n_s_verbose;
 static PyObject *__pyx_n_s_yj;
 static PyObject *__pyx_n_s_zeros;
@@ -27939,7 +27939,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_s_ur, __pyx_k_ur, sizeof(__pyx_k_ur), 0, 0, 1, 1},
   {&__pyx_n_s_user_denom, __pyx_k_user_denom, sizeof(__pyx_k_user_denom), 0, 0, 1, 1},
   {&__pyx_n_s_user_num, __pyx_k_user_num, sizeof(__pyx_k_user_num), 0, 0, 1, 1},
-  {&__pyx_n_s_utils, __pyx_k_utils, sizeof(__pyx_k_utils), 0, 0, 1, 1},
+  {&__pyx_n_s_utils_utils, __pyx_k_utils_utils, sizeof(__pyx_k_utils_utils), 0, 0, 1, 1},
   {&__pyx_n_s_verbose, __pyx_k_verbose, sizeof(__pyx_k_verbose), 0, 0, 1, 1},
   {&__pyx_n_s_yj, __pyx_k_yj, sizeof(__pyx_k_yj), 0, 0, 1, 1},
   {&__pyx_n_s_zeros, __pyx_k_zeros, sizeof(__pyx_k_zeros), 0, 0, 1, 1},
@@ -28869,7 +28869,7 @@ if (!__Pyx_RefNanny) {
  * 
  * from .algo_base import AlgoBase             # <<<<<<<<<<<<<<
  * from .predictions import PredictionImpossible
- * from ..utils import get_rng
+ * from ..utils.utils import get_rng
  */
   __pyx_t_1 = PyList_New(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 5, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
@@ -28889,7 +28889,7 @@ if (!__Pyx_RefNanny) {
  * 
  * from .algo_base import AlgoBase
  * from .predictions import PredictionImpossible             # <<<<<<<<<<<<<<
- * from ..utils import get_rng
+ * from ..utils.utils import get_rng
  * 
  */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 6, __pyx_L1_error)
@@ -28909,7 +28909,7 @@ if (!__Pyx_RefNanny) {
   /* "algorithm/prediction_algorithms/matrix_factorization.pyx":7
  * from .algo_base import AlgoBase
  * from .predictions import PredictionImpossible
- * from ..utils import get_rng             # <<<<<<<<<<<<<<
+ * from ..utils.utils import get_rng             # <<<<<<<<<<<<<<
  * 
  * import cython
  */
@@ -28918,7 +28918,7 @@ if (!__Pyx_RefNanny) {
   __Pyx_INCREF(__pyx_n_s_get_rng);
   __Pyx_GIVEREF(__pyx_n_s_get_rng);
   PyList_SET_ITEM(__pyx_t_1, 0, __pyx_n_s_get_rng);
-  __pyx_t_2 = __Pyx_Import(__pyx_n_s_utils, __pyx_t_1, 2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 7, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_Import(__pyx_n_s_utils_utils, __pyx_t_1, 2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 7, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   __pyx_t_1 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_get_rng); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 7, __pyx_L1_error)
