@@ -5,7 +5,6 @@ inherit.
 """
 import heapq
 
-from .. import similarities as sims
 from .optimize_baselines import baseline_als, baseline_sgd
 from .predictions import Prediction, PredictionImpossible
 
@@ -22,7 +21,6 @@ class AlgoBase:
     """
 
     def __init__(self, **kwargs):
-
         self.bsl_options = kwargs.get("bsl_options", {})
         self.sim_options = kwargs.get("sim_options", {})
         if "user_based" not in self.sim_options:
@@ -210,54 +208,15 @@ class AlgoBase:
         :ref:`similarity_measures_configuration`).
 
         This method is only relevant for algorithms using a similarity measure,
-        such as the :ref:`k-NN algorithms <pred_package_knn_inpired>`.
+        such as the :ref:`pearson_baseline similarity
+        <pearson_baseline_similarity>` or the :ref:`cosine similarity
+        <cosine_similarity>`.
 
         Returns:
-            The similarity matrix."""
-
-        construction_func = {
-            "cosine": sims.cosine,
-            "msd": sims.msd,
-            "pearson": sims.pearson,
-            "pearson_baseline": sims.pearson_baseline,
-        }
-
-        if self.sim_options["user_based"]:
-            n_x, yr = self.trainset.n_users, self.trainset.ir
-        else:
-            n_x, yr = self.trainset.n_items, self.trainset.ur
-
-        min_support = self.sim_options.get("min_support", 1)
-
-        args = [n_x, yr, min_support]
-
-        name = self.sim_options.get("name", "msd").lower()
-        if name == "pearson_baseline":
-            shrinkage = self.sim_options.get("shrinkage", 100)
-            bu, bi = self.compute_baselines()
-            if self.sim_options["user_based"]:
-                bx, by = bu, bi
-            else:
-                bx, by = bi, bu
-
-            args += [self.trainset.global_mean, bx, by, shrinkage]
-
-        try:
-            if getattr(self, "verbose", False):
-                print(f"Computing the {name} similarity matrix...")
-            sim = construction_func[name](*args)
-            if getattr(self, "verbose", False):
-                print("Done computing similarity matrix.")
-            return sim
-        except KeyError:
-            raise NameError(
-                "Wrong sim name "
-                + name
-                + ". Allowed values "
-                + "are "
-                + ", ".join(construction_func.keys())
-                + "."
-            )
+            The similarity matrix.
+        """
+        from .. import similarities as sims
+        return sims.compute_similarities(self)
 
     def get_neighbors(self, iid, k):
         """Return the ``k`` nearest neighbors of ``iid``, which is the inner id
