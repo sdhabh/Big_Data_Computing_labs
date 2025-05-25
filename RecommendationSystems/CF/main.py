@@ -1,7 +1,8 @@
 import os
 import time
 import psutil
-from CF import UserCF, ItemCF
+from RecommendationSystems.CF.algorithm.UserCF import UserCF
+from RecommendationSystems.CF.algorithm.ItemCF import ItemCF
 
 def get_display_width(text):
     """计算字符串的显示宽度，中文字符计为2个宽度"""

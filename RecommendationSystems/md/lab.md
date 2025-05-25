@@ -123,7 +123,7 @@
 
 ## User-Based CF
 
-> 此部分为胡进喆单独完成
+> User-Based CF和Item-Based CF两个部分为胡进喆单独完成
 
 ### 算法原理
 
@@ -366,12 +366,12 @@ Item-Based CF适用于**物品数量相对稳定、用户行为动态性强**的
 
 ```python
         # 填充评分矩阵
-        for item in self.item_ratings:
-            item_idx = self.item_to_idx[item]
-            for user, rating in self.item_ratings[item].items():
-                if user in self.user_to_idx:
-                    user_idx = self.user_to_idx[user]
-                    self.item_user_matrix[item_idx, user_idx] = rating
+for item in self.item_ratings:
+    item_idx = self.item_to_idx[item]
+    for user, rating in self.item_ratings[item].items():
+        if user in self.user_to_idx:
+            user_idx = self.user_to_idx[user]
+            self.item_user_matrix[item_idx, user_idx] = rating
 ```
 
 
