@@ -7,6 +7,9 @@ from algorithm.UserCF import UserCF
 from algorithm.ItemCF import ItemCF
 from algorithm.GraphCF import GraphCF
 from algorithm.SlopeOne import SlopeOne
+from algorithm.LeastSquaresCF import LeastSquaresCF
+from algorithm.TopKNanCF import TopKNanCF
+from algorithm.GDLinearCF import GDLinearCF
 
 
 def get_display_width(text):
@@ -269,7 +272,23 @@ def main():
     cross_validate_and_predict(
         SlopeOne, "SlopeOne", user_item_score, test_file, output_dir
     )
-
+    cross_validate_and_predict(
+        LeastSquaresCF, "LeastSquaresCF", user_item_score, test_file, output_dir
+    )
+    cross_validate_and_predict(
+        TopKNanCF,  # 你的类名
+        "TopKNanCF",  # 模型名称
+        user_item_score,
+        test_file,
+        output_dir,
+    )
+    cross_validate_and_predict(
+        GDLinearCF,
+        "GDLinearCF",
+        user_item_score,
+        test_file,
+        output_dir,
+    )
     print_section_title("运行完成")
     print(" 所有模型运行完成！预测结果已保存在output目录下。")
 
