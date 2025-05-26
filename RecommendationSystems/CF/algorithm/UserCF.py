@@ -4,6 +4,7 @@ from collections import defaultdict
 from sklearn.metrics.pairwise import cosine_similarity
 import random
 
+
 def pearson_similarity(matrix):
     """计算皮尔逊相关系数相似度矩阵"""
     # 计算每个向量的均值
@@ -11,7 +12,7 @@ def pearson_similarity(matrix):
     # 中心化
     centered = matrix - mean
     # 计算标准差
-    std = np.sqrt(np.sum(centered ** 2, axis=1, keepdims=True))
+    std = np.sqrt(np.sum(centered**2, axis=1, keepdims=True))
     # 避免除以0
     std[std == 0] = 1
     # 标准化
@@ -19,8 +20,9 @@ def pearson_similarity(matrix):
     # 计算相关系数
     return np.dot(normalized, normalized.T)
 
+
 class UserCF:
-    def __init__(self, n_neighbors=20, min_similarity=0, similarity_method='cosine'):
+    def __init__(self, n_neighbors=20, min_similarity=0, similarity_method="cosine"):
         self.n_neighbors = n_neighbors  # 邻居数量
         self.min_similarity = min_similarity  # 最小相似度阈值
         self.similarity_method = similarity_method  # 相似度计算方法
@@ -39,11 +41,11 @@ class UserCF:
         current_user = None
         all_ratings = []  # 存储所有评分用于计算全局平均分
 
-        with open(train_file, 'r', encoding='utf-8') as f:
+        with open(train_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if '|' in line:  # 用户行
-                    current_user, _ = line.split('|')
+                if "|" in line:  # 用户行
+                    current_user, _ = line.split("|")
                     current_user = int(current_user)
                 else:  # 评分行
                     if line:
@@ -67,7 +69,7 @@ class UserCF:
         users = list(self.user_ratings.keys())
         items = list(self.item_ratings.keys())
         self.user_item_matrix = np.zeros((len(users), len(items)))
-        
+
         # 创建用户和物品的索引映射
         self.user_to_idx = {user: idx for idx, user in enumerate(users)}
         self.item_to_idx = {item: idx for idx, item in enumerate(items)}
@@ -83,9 +85,56 @@ class UserCF:
                     self.user_item_matrix[user_idx, item_idx] = rating
 
         # 计算用户相似度矩阵
-        if self.similarity_method == 'cosine':
+        if self.similarity_method == "cosine":
             self.user_similarity = cosine_similarity(self.user_item_matrix)
-        elif self.similarity_method == 'pearson':
+        elif self.similarity_method == "pearson":
+            self.user_similarity = pearson_similarity(self.user_item_matrix)
+        else:
+            raise ValueError(f"不支持的相似度计算方法: {self.similarity_method}")
+
+    def fit_from_dict(self, train_dict):
+        """训练模型（字典输入）"""
+        self.user_ratings = defaultdict(dict)
+        self.item_ratings = defaultdict(dict)
+        all_ratings = []
+        for user_id, items in train_dict.items():
+            for item_id, score in items.items():
+                self.user_ratings[user_id][item_id] = score
+                self.item_ratings[item_id][user_id] = score
+                all_ratings.append(score)
+
+        # 计算全局平均分
+        self.global_mean_rating = np.mean(all_ratings) if all_ratings else 0
+
+        # 计算用户平均评分
+        self.mean_ratings = {}
+        for user in self.user_ratings:
+            ratings = list(self.user_ratings[user].values())
+            self.mean_ratings[user] = np.mean(ratings)
+
+        # 构建用户-物品评分矩阵
+        users = list(self.user_ratings.keys())
+        items = list(self.item_ratings.keys())
+        self.user_item_matrix = np.zeros((len(users), len(items)))
+
+        # 创建用户和物品的索引映射
+        self.user_to_idx = {user: idx for idx, user in enumerate(users)}
+        self.item_to_idx = {item: idx for idx, item in enumerate(items)}
+        self.idx_to_user = {idx: user for user, idx in self.user_to_idx.items()}
+        self.idx_to_item = {idx: item for item, idx in self.item_to_idx.items()}
+
+        # 填充评分矩阵
+        for user in self.user_ratings:
+            user_idx = self.user_to_idx[user]
+            for item, rating in self.user_ratings[user].items():
+                if item in self.item_to_idx:
+                    item_idx = self.item_to_idx[item]
+                    self.user_item_matrix[user_idx, item_idx] = rating
+
+        # 计算用户相似度矩阵
+        if self.similarity_method == "cosine":
+            self.user_similarity = cosine_similarity(self.user_item_matrix)
+        elif self.similarity_method == "pearson":
             self.user_similarity = pearson_similarity(self.user_item_matrix)
         else:
             raise ValueError(f"不支持的相似度计算方法: {self.similarity_method}")
@@ -97,11 +146,11 @@ class UserCF:
         count = 0
         current_user = None
 
-        with open(validation_file, 'r', encoding='utf-8') as f:
+        with open(validation_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if '|' in line:  # 用户行
-                    current_user, _ = line.split('|')
+                if "|" in line:  # 用户行
+                    current_user, _ = line.split("|")
                     current_user = int(current_user)
                 else:  # 评分行
                     if line:
@@ -111,13 +160,30 @@ class UserCF:
                         predicted_rating = self.predict(current_user, item_id)
                         error = abs(predicted_rating - true_rating)
                         mae += error
-                        rmse += error ** 2
+                        rmse += error**2
                         count += 1
 
         if count > 0:
             mae /= count
             rmse = np.sqrt(rmse / count)
 
+        return mae, rmse
+
+    def evaluate_from_dict(self, val_dict):
+        """评估模型性能（字典输入）"""
+        mae = 0
+        rmse = 0
+        count = 0
+        for user_id, items in val_dict.items():
+            for item_id, true_rating in items.items():
+                predicted_rating = self.predict(user_id, item_id)
+                error = abs(predicted_rating - true_rating)
+                mae += error
+                rmse += error**2
+                count += 1
+        if count > 0:
+            mae /= count
+            rmse = np.sqrt(rmse / count)
         return mae, rmse
 
     def predict(self, user_id, item_id):
@@ -139,7 +205,7 @@ class UserCF:
 
         # 按相似度排序并选择top-N个邻居
         similar_users.sort(key=lambda x: x[1], reverse=True)
-        similar_users = similar_users[:self.n_neighbors]
+        similar_users = similar_users[: self.n_neighbors]
 
         if not similar_users:
             return self.global_mean_rating
@@ -157,4 +223,3 @@ class UserCF:
 
         predicted_rating = self.mean_ratings[user_id] + numerator / denominator
         return max(0, min(100, predicted_rating))  # 确保评分在0-100之间
-

@@ -4,24 +4,19 @@ from collections import defaultdict
 from sklearn.metrics.pairwise import cosine_similarity
 import random
 
+
 def pearson_similarity(matrix):
     """计算皮尔逊相关系数相似度矩阵"""
-    # 计算每个向量的均值
     mean = np.mean(matrix, axis=1, keepdims=True)
-    # 中心化
     centered = matrix - mean
-    # 计算标准差
-    std = np.sqrt(np.sum(centered ** 2, axis=1, keepdims=True))
-    # 避免除以0
+    std = np.sqrt(np.sum(centered**2, axis=1, keepdims=True))
     std[std == 0] = 1
-    # 标准化
     normalized = centered / std
-    # 计算相关系数
     return np.dot(normalized, normalized.T)
 
 
 class ItemCF:
-    def __init__(self, n_neighbors=20, min_similarity=0, similarity_method='cosine'):
+    def __init__(self, n_neighbors=20, min_similarity=0, similarity_method="cosine"):
         self.n_neighbors = n_neighbors  # 邻居数量
         self.min_similarity = min_similarity  # 最小相似度阈值
         self.similarity_method = similarity_method  # 相似度计算方法
@@ -33,18 +28,17 @@ class ItemCF:
         self.global_mean_rating = 0  # 全局平均评分
 
     def fit(self, train_file):
-        """训练模型"""
-        # 读取训练数据
+        """训练模型（文件输入）"""
         self.user_ratings = defaultdict(dict)
         self.item_ratings = defaultdict(dict)
         current_user = None
         all_ratings = []  # 存储所有评分用于计算全局平均分
 
-        with open(train_file, 'r', encoding='utf-8') as f:
+        with open(train_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if '|' in line:  # 用户行
-                    current_user, _ = line.split('|')
+                if "|" in line:  # 用户行
+                    current_user, _ = line.split("|")
                     current_user = int(current_user)
                 else:  # 评分行
                     if line:
@@ -55,6 +49,21 @@ class ItemCF:
                         self.item_ratings[item_id][current_user] = score
                         all_ratings.append(score)
 
+        self._build_matrix_and_similarity(all_ratings)
+
+    def fit_from_dict(self, train_dict):
+        """训练模型（字典输入）"""
+        self.user_ratings = defaultdict(dict)
+        self.item_ratings = defaultdict(dict)
+        all_ratings = []
+        for user_id, items in train_dict.items():
+            for item_id, score in items.items():
+                self.user_ratings[user_id][item_id] = score
+                self.item_ratings[item_id][user_id] = score
+                all_ratings.append(score)
+        self._build_matrix_and_similarity(all_ratings)
+
+    def _build_matrix_and_similarity(self, all_ratings):
         # 计算全局平均分
         self.global_mean_rating = np.mean(all_ratings) if all_ratings else 0
 
@@ -68,7 +77,7 @@ class ItemCF:
         items = list(self.item_ratings.keys())
         users = list(self.user_ratings.keys())
         self.item_user_matrix = np.zeros((len(items), len(users)))
-        
+
         # 创建物品和用户的索引映射
         self.item_to_idx = {item: idx for idx, item in enumerate(items)}
         self.user_to_idx = {user: idx for idx, user in enumerate(users)}
@@ -84,25 +93,25 @@ class ItemCF:
                     self.item_user_matrix[item_idx, user_idx] = rating
 
         # 计算物品相似度矩阵
-        if self.similarity_method == 'cosine':
+        if self.similarity_method == "cosine":
             self.item_similarity = cosine_similarity(self.item_user_matrix)
-        elif self.similarity_method == 'pearson':
+        elif self.similarity_method == "pearson":
             self.item_similarity = pearson_similarity(self.item_user_matrix)
         else:
             raise ValueError(f"不支持的相似度计算方法: {self.similarity_method}")
 
     def evaluate(self, validation_file):
-        """评估模型性能"""
+        """评估模型性能（文件输入）"""
         mae = 0
         rmse = 0
         count = 0
         current_user = None
 
-        with open(validation_file, 'r', encoding='utf-8') as f:
+        with open(validation_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if '|' in line:  # 用户行
-                    current_user, _ = line.split('|')
+                if "|" in line:  # 用户行
+                    current_user, _ = line.split("|")
                     current_user = int(current_user)
                 else:  # 评分行
                     if line:
@@ -112,13 +121,30 @@ class ItemCF:
                         predicted_rating = self.predict(current_user, item_id)
                         error = abs(predicted_rating - true_rating)
                         mae += error
-                        rmse += error ** 2
+                        rmse += error**2
                         count += 1
 
         if count > 0:
             mae /= count
             rmse = np.sqrt(rmse / count)
 
+        return mae, rmse
+
+    def evaluate_from_dict(self, val_dict):
+        """评估模型性能（字典输入）"""
+        mae = 0
+        rmse = 0
+        count = 0
+        for user_id, items in val_dict.items():
+            for item_id, true_rating in items.items():
+                predicted_rating = self.predict(user_id, item_id)
+                error = abs(predicted_rating - true_rating)
+                mae += error
+                rmse += error**2
+                count += 1
+        if count > 0:
+            mae /= count
+            rmse = np.sqrt(rmse / count)
         return mae, rmse
 
     def predict(self, user_id, item_id):
@@ -140,7 +166,7 @@ class ItemCF:
 
         # 按相似度排序并选择top-N个邻居
         similar_items.sort(key=lambda x: x[1], reverse=True)
-        similar_items = similar_items[:self.n_neighbors]
+        similar_items = similar_items[: self.n_neighbors]
 
         if not similar_items:
             return self.global_mean_rating
@@ -157,4 +183,4 @@ class ItemCF:
             return self.global_mean_rating
 
         predicted_rating = self.mean_ratings[item_id] + numerator / denominator
-        return max(0, min(100, predicted_rating))  # 确保评分在0-100之间 
+        return max(0, min(100, predicted_rating))  # 确保评分在0-100之间
