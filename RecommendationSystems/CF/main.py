@@ -1,6 +1,7 @@
 import os
 import time
 import random
+import argparse
 from collections import defaultdict
 import psutil
 from algorithm.UserCF import UserCF
@@ -36,9 +37,10 @@ def print_section_title(title):
     print_separator()
 
 
-def read_train_data(filename):
+def read_data_to_dict(file_path):
+    """读取数据文件并转换为字典格式"""
     user_item_score = defaultdict(dict)
-    with open(filename, "r", encoding="utf-8") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
     i = 0
     while i < len(lines):
@@ -105,7 +107,7 @@ def cross_validate_and_predict(
     n_neighbors=20,
     min_similarity=0,
     similarity_method="cosine",
-    n_splits=1,
+    n_splits=5,
     test_size=0.2,
 ):
     print_section_title(f"{model_name} {n_splits}次随机划分交叉验证")
@@ -159,7 +161,11 @@ def run_model(model, model_name, train_file, val_file, test_file, output_dir):
     process = psutil.Process(os.getpid())
     start_time = time.time()
     start_memory = process.memory_info().rss if process else 0
-    model.fit(train_file)
+    
+    # 读取训练数据
+    train_dict = read_data_to_dict(train_file)
+    model.fit_from_dict(train_dict)
+    
     time_used = time.time() - start_time
     end_memory = process.memory_info().rss if process else 0
     memory_used = (end_memory - start_memory) / (1024**2)
@@ -170,7 +176,11 @@ def run_model(model, model_name, train_file, val_file, test_file, output_dir):
     print(f"\n[2/3] 在验证集上评估{model_name}模型性能...")
     eval_start_time = time.time()
     eval_start_memory = process.memory_info().rss if process else 0
-    mae, rmse = model.evaluate(val_file)
+    
+    # 读取验证数据
+    val_dict = read_data_to_dict(val_file)
+    mae, rmse = model.evaluate_from_dict(val_dict)
+    
     eval_time = time.time() - eval_start_time
     eval_end_memory = process.memory_info().rss if process else 0
     eval_memory = (eval_end_memory - eval_start_memory) / (1024**2)
@@ -183,11 +193,11 @@ def run_model(model, model_name, train_file, val_file, test_file, output_dir):
     print(f"\n[3/3] 开始使用{model_name}预测测试集中的评分...")
     predict_start_time = time.time()
     predict_start_memory = process.memory_info().rss if process else 0
-    current_user = None
     predictions = []
 
     try:
         with open(test_file, "r", encoding="utf-8") as f:
+            current_user = None
             for line in f:
                 line = line.strip()
                 if not line:
@@ -224,8 +234,64 @@ def run_model(model, model_name, train_file, val_file, test_file, output_dir):
         print(f"└─ 当前用户：{current_user}")
 
 
-def main():
-    print_section_title("协同过滤推荐系统")
+def run_basic_models():
+    """运行基础模型（不使用交叉验证）"""
+    print_section_title("协同过滤推荐系统 - 基础模式")
+    n_neighbors = 20
+    min_similarity = 0
+    similarity_method = 'cosine'  # pearson cosine
+    print("系统配置：")
+    print(f"├─ 邻居数量 (n_neighbors): {n_neighbors}")
+    print(f"├─ 最小相似度阈值 (min_similarity): {min_similarity}")
+    print(f"└─ 相似度计算方法 (similarity_method): {similarity_method}\n")
+    
+    # 获取当前文件所在目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # 构建训练集、验证集和测试集的文件路径
+    train_file = os.path.join(current_dir, "data", "train_split.txt")
+    val_file = os.path.join(current_dir, "data", "val_split.txt")
+    test_file = os.path.join(current_dir, "data", "test.txt")
+    
+    # 创建输出目录
+    output_dir = os.path.join(current_dir, "output")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 运行UserCF模型 
+    user_cf_model = UserCF(n_neighbors, min_similarity, similarity_method)
+    run_model(user_cf_model, "UserCF", train_file, val_file, test_file, output_dir)
+    
+    # 运行ItemCF模型 
+    item_cf_model = ItemCF(n_neighbors, min_similarity, similarity_method)
+    run_model(item_cf_model, "ItemCF", train_file, val_file, test_file, output_dir)
+
+    # 运行GraphCF模型
+    graph_cf_model = GraphCF()
+    run_model(graph_cf_model, "GraphCF", train_file, val_file, test_file, output_dir)
+    
+    # 运行SlopeOne模型
+    slope_one_model = SlopeOne()
+    run_model(slope_one_model, "SlopeOne", train_file, val_file, test_file, output_dir)
+    
+    # 运行LeastSquaresCF模型
+    least_squares_model = LeastSquaresCF()
+    run_model(least_squares_model, "LeastSquaresCF", train_file, val_file, test_file, output_dir)
+    
+    # 运行TopKNanCF模型
+    topk_nan_model = TopKNanCF()
+    run_model(topk_nan_model, "TopKNanCF", train_file, val_file, test_file, output_dir)
+    
+    # 运行GDLinearCF模型
+    gd_linear_model = GDLinearCF()
+    run_model(gd_linear_model, "GDLinearCF", train_file, val_file, test_file, output_dir)
+    
+    print_section_title("基础模式运行完成")
+    print(" 所有模型运行完成！预测结果已保存在output目录下。")
+
+
+def run_cross_validation_models():
+    """运行交叉验证模式"""
+    print_section_title("协同过滤推荐系统 - 交叉验证模式")
     n_neighbors = 20
     min_similarity = 0
     similarity_method = "cosine"
@@ -242,10 +308,10 @@ def main():
     train_txt_path = os.path.join(data_dir, "train.txt")
     test_file = os.path.join(data_dir, "test.txt")
 
-    # 1. 读取完整训练数据
-    user_item_score = read_train_data(train_txt_path)
+    # 读取完整训练数据
+    user_item_score = read_data_to_dict(train_txt_path)
 
-    # 2. 对所有模型进行交叉验证和最终预测
+    # 对所有模型进行交叉验证和最终预测
     cross_validate_and_predict(
         ItemCF,
         "ItemCF",
@@ -276,8 +342,8 @@ def main():
         LeastSquaresCF, "LeastSquaresCF", user_item_score, test_file, output_dir
     )
     cross_validate_and_predict(
-        TopKNanCF,  # 你的类名
-        "TopKNanCF",  # 模型名称
+        TopKNanCF,
+        "TopKNanCF",
         user_item_score,
         test_file,
         output_dir,
@@ -286,11 +352,22 @@ def main():
         GDLinearCF,
         "GDLinearCF",
         user_item_score,
-        test_file,
         output_dir,
     )
-    print_section_title("运行完成")
+    print_section_title("交叉验证模式运行完成")
     print(" 所有模型运行完成！预测结果已保存在output目录下。")
+
+
+def main():
+    parser = argparse.ArgumentParser(description='协同过滤推荐系统')
+    parser.add_argument('--mode', type=str, choices=['basic', 'cross'], default='basic',
+                      help='运行模式: basic (基础模式) 或 cross (交叉验证模式)')
+    args = parser.parse_args()
+
+    if args.mode == 'basic':
+        run_basic_models()
+    else:
+        run_cross_validation_models()
 
 
 if __name__ == "__main__":
