@@ -11,6 +11,7 @@ from algorithm.SlopeOne import SlopeOne
 from algorithm.LeastSquaresCF import LeastSquaresCF
 from algorithm.TopKNanCF import TopKNanCF
 from algorithm.GDLinearCF import GDLinearCF
+import sys
 
 
 def get_display_width(text):
@@ -358,16 +359,49 @@ def run_cross_validation_models():
     print(" 所有模型运行完成！预测结果已保存在output目录下。")
 
 
+class Tee:
+    """同时将输出写入到文件和控制台"""
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, 'w', encoding='utf-8')
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+    def close(self):
+        self.log.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description='协同过滤推荐系统')
     parser.add_argument('--mode', type=str, choices=['basic', 'cross'], default='basic',
                       help='运行模式: basic (基础模式) 或 cross (交叉验证模式)')
     args = parser.parse_args()
 
+    # 日志重定向到不同的log文件
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(current_dir, "output")
+    os.makedirs(output_dir, exist_ok=True)
     if args.mode == 'basic':
-        run_basic_models()
+        log_file = os.path.join(output_dir, "basic_log.txt")
     else:
-        run_cross_validation_models()
+        log_file = os.path.join(output_dir, "cross_log.txt")
+    original_stdout = sys.stdout
+    tee = Tee(log_file)
+    sys.stdout = tee
+    try:
+        if args.mode == 'basic':
+            run_basic_models()
+        else:
+            run_cross_validation_models()
+    finally:
+        sys.stdout = original_stdout
+        tee.close()
 
 
 if __name__ == "__main__":
