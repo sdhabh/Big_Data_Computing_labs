@@ -267,8 +267,8 @@ def run_basic_models():
     run_model(item_cf_model, "ItemCF", train_file, val_file, test_file, output_dir)
 
     # 运行GraphCF模型
-    graph_cf_model = GraphCF()
-    run_model(graph_cf_model, "GraphCF", train_file, val_file, test_file, output_dir)
+    # graph_cf_model = GraphCF()
+    # run_model(graph_cf_model, "GraphCF", train_file, val_file, test_file, output_dir)
     
     # 运行SlopeOne模型
     slope_one_model = SlopeOne()
@@ -279,8 +279,8 @@ def run_basic_models():
     run_model(least_squares_model, "LeastSquaresCF", train_file, val_file, test_file, output_dir)
     
     # 运行TopKNanCF模型
-    topk_nan_model = TopKNanCF()
-    run_model(topk_nan_model, "TopKNanCF", train_file, val_file, test_file, output_dir)
+    # topk_nan_model = TopKNanCF()
+    # run_model(topk_nan_model, "TopKNanCF", train_file, val_file, test_file, output_dir)
     
     # 运行GDLinearCF模型
     gd_linear_model = GDLinearCF()
@@ -388,7 +388,7 @@ def main():
     output_dir = os.path.join(current_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
     if args.mode == 'basic':
-        log_file = os.path.join(output_dir, "basic_log.txt")
+        log_file = os.path.join(output_dir, "basic1_log.txt")
     else:
         log_file = os.path.join(output_dir, "cross_log.txt")
     original_stdout = sys.stdout

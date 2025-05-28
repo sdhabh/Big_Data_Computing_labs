@@ -3,11 +3,12 @@ from collections import defaultdict, Counter
 
 
 class LeastSquaresCF:
-    def __init__(self):
+    def __init__(self, top_n=5):
         # item_weights[item_id] = (other_item_ids, weights)
         self.item_weights = dict()
         self.user_ratings = defaultdict(dict)
         self.global_mean = 0
+        self.top_n = top_n
 
     def fit_from_dict(self, train_dict):
         """
@@ -31,34 +32,22 @@ class LeastSquaresCF:
         self.item_weights = dict()
         for target_item in items:
             users = list(item_user[target_item].keys())
-            # 统计每个用户评分过的other_items集合
-            itemset_counter = Counter(
-                tuple(
-                    sorted(
-                        [
-                            item
-                            for item in self.user_ratings[user]
-                            if item != target_item
-                        ]
-                    )
-                )
-                for user in users
-            )
-            if not itemset_counter:
-                continue
-            most_common_items, _ = itemset_counter.most_common(1)[0]
+            # 统计所有用户评分过的other_items
+            other_items_counter = Counter()
+            for user in users:
+                other_items = [item for item in self.user_ratings[user] if item != target_item]
+                other_items_counter.update(other_items)
+            # 选出现频率最高的N个other_items
+            most_common_items = [item for item, _ in other_items_counter.most_common(self.top_n)]
             if not most_common_items:
                 continue
-            # 只对评分过most_common_items的用户做拟合
+            # 拟合时允许部分缺失，未评分的用全局均值填充
             X = []
             y = []
             for user in users:
                 user_ratings = self.user_ratings[user]
-                if (
-                    all(item in user_ratings for item in most_common_items)
-                    and target_item in user_ratings
-                ):
-                    x = [user_ratings[item] for item in most_common_items]
+                if target_item in user_ratings:
+                    x = [user_ratings.get(item, self.global_mean) for item in most_common_items]
                     X.append(x)
                     y.append(user_ratings[target_item])
             if not X:
@@ -84,16 +73,10 @@ class LeastSquaresCF:
             )
         other_items, w = self.item_weights[item_id]
         user_ratings = self.user_ratings[user_id]
-        if all(i in user_ratings for i in other_items):
-            x = np.array([user_ratings[i] for i in other_items])
-            pred = float(np.dot(w, x))
-            return max(0, min(100, pred))
-        else:
-            return (
-                np.mean(list(user_ratings.values()))
-                if user_ratings
-                else self.global_mean
-            )
+        # 允许部分缺失，未评分的用全局均值填充
+        x = np.array([user_ratings.get(i, self.global_mean) for i in other_items])
+        pred = float(np.dot(w, x))
+        return max(0, min(100, pred))
 
     def evaluate_from_dict(self, val_dict):
         """
