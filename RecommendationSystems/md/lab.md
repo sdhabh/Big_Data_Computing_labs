@@ -994,3 +994,442 @@ return pred
    - 模型训练异常跳过不影响整体
    - 预测失败时回退到统计基准值
    - NaN值保留原始数据分布
+
+# SVD
+
+## SVD算法的数学基础与优化
+
+在传统的SVD矩阵分解方法中，算法的核心目标是通过最小化预测评分与实际评分之间的平方误差来学习用户和商品的潜在特征向量。具体而言，SVD算法的损失函数可以表示为：
+$$
+L = Σ(u,i)∈R (r_ui - p_u^T q_i)^2 + λ(||p_u||^2 + ||q_i||^2)
+$$
+这个损失函数的第一项代表了预测误差的平方和，其中`r_ui`是用户u对商品i的实际评分，`p_u^T q_i`是通过矩阵分解得到的预测评分。第二项是L2正则化项，通过引入正则化参数λ来控制模型复杂度，防止过拟合现象的发生。正则化项的作用在于约束用户特征向量`p_u`和商品特征向量`q_i`的范数，使得模型能够更好地泛化到未见过的数据上。
+
+<img src="https://www.mdpi.com/information/information-11-00369/article_deploy/html/images/information-11-00369-g001.png" alt="Information 11 00369 g001" style="zoom: 25%;" />
+
+然而，传统的SVD方法存在一个显著的局限性，即它仅仅考虑了显式的评分信息，而忽略了用户在系统中产生的大量隐式反馈信息。在实际的推荐系统应用场景中，用户的隐式行为数据（如商品浏览记录、购买历史、点击行为等）往往比显式评分更加丰富和容易获取。基于这一观察，SVD++算法应运而生，它在传统SVD的基础上融合了隐式反馈信息，从而能够更全面地建模用户的偏好模式。
+
+## SVD++算法的创新机制
+
+SVD++算法的核心创新在于将用户的隐式反馈信息整合到评分预测模型中。该算法认为，即使用户没有对某个商品给出明确的评分，但用户与该商品的交互行为（如浏览、收藏、加入购物车等）仍然能够反映用户的潜在兴趣。基于这一思想，SVD++算法重新定义了评分预测公式：
+$$
+r̂_ui = μ + b_u + b_i + (p_u + |I_u|^(-1/2) Σ(j∈I_u) y_j)^T q_i
+$$
+在这个公式中，预测评分不再仅仅依赖于用户和商品的基本特征向量，而是引入了多个重要的改进元素。首先，`μ`代表了整个系统的全局平均评分，它反映了所有用户对所有商品的整体评价趋势。其次，`b_u`和`b_i`分别表示用户u和商品i的偏置项，这些偏置项能够捕捉个体用户和商品相对于全局平均水平的系统性偏差。例如，某些用户可能倾向于给出较高的评分（乐观用户），而另一些用户可能相对保守（悲观用户）；同样，某些商品可能普遍受到好评，而另一些商品可能评价相对较低。
+
+更为重要的是，SVD++算法在用户特征向量`p_u`的基础上增加了隐式反馈项`|I_u|^(-1/2) Σ(j∈I_u) y_j`。这里，`I_u`表示用户u有过交互行为的商品集合，`y_j`是商品j对应的隐式反馈因子向量，而`|I_u|^(-1/2)`是归一化因子，用于消除不同用户交互商品数量差异带来的影响。这种设计使得算法能够从用户的历史行为模式中推断出用户的潜在偏好，即使这些偏好没有通过显式评分表达出来。
+
+## 参数学习与优化过程
+
+为了学习SVD++模型中的各项参数，算法采用了基于梯度下降的优化方法。完整的损失函数可以表示为：
+$$
+L = Σ(u,i)∈R [r_ui - μ - b_u - b_i - (p_u + |I_u|^(-1/2) Σ(j∈I_u) y_j)^T q_i]^2 
+    + λ(||p_u||^2 + ||q_i||^2 + ||y_j||^2 + b_u^2 + b_i^2)
+$$
+在每次迭代过程中，算法计算预测误差`e_ui = r_ui - r̂_ui`，然后根据梯度信息更新各项参数。具体的参数更新规则如下：
+$$
+b_u = b_u + γ(e_ui - λb_u)
+b_i = b_i + γ(e_ui - λb_i)
+p_u = p_u + γ(e_ui · q_i - λp_u)
+q_i = q_i + γ(e_ui · (p_u + |I_u|^(-1/2) Σ(j∈I_u) y_j) - λq_i)
+y_j = y_j + γ(e_ui · |I_u|^(-1/2) · q_i - λy_j), ∀j ∈ I_u
+$$
+其中γ是学习率参数，控制着参数更新的步长。这种随机梯度下降的优化策略使得算法能够逐步逼近最优解，同时保持较好的计算效率。
+
+## 算法性能与复杂度分析
+
+从计算复杂度的角度来看，SVD++算法的时间复杂度为`O(k · Σ_u |I_u|)`，其中k是潜在因子的维度，`Σ_u |I_u|`是所有用户交互商品数量的总和。相比于传统的SVD算法，SVD++的计算复杂度有所增加，这主要是由于需要处理隐式反馈信息带来的额外计算开销。然而，这种复杂度的增加是合理且必要的，因为隐式反馈信息的引入显著提升了模型的预测精度和推荐质量。
+
+SVD++算法的优势不仅体现在理论层面，更重要的是在实际应用中展现出的卓越性能。通过综合考虑显式评分和隐式反馈信息，SVD++能够更准确地捕捉用户的真实偏好，特别是在数据稀疏性较高的场景下表现尤为突出。此外，偏置项的引入使得模型能够更好地处理用户和商品的个体差异，从而提供更加个性化和精准的推荐结果。这些特性使得SVD++成为现代推荐系统中一种重要且实用的算法选择。
+
+## RSVD算法与SVD++推荐算法的发展
+
+虽然SVD算法在数据分解方面取得了广泛的应用，但在面对稀疏数据时，观测到的评分集合R相对较小，这容易导致模型出现过拟合现象。当模型应用于预测实际数据时，其效果往往远不如在训练数据上的表现。这种过度依赖现有训练数据集特征的问题是机器学习中常见的挑战。在模型参数拟合过程中，由于训练数据本身包含采样误差，复杂的模型在训练过程中也会将这些采样误差一并学习，从而降低了模型的泛化能力。
+
+为了解决过拟合问题，研究者们提出了多种方法，包括交叉验证、剪枝和正则化等技术。其中，正则化是机器学习中解决过拟合最常用的方案之一。正则化的基本思想是在损失函数中添加正则化项，通过对模型参数进行惩罚来降低模型的复杂度，从而提高模型的泛化性能。基于这一思想，在传统SVD算法的基础上，研究者们在损失函数中加入了正则化项，形成了正则化SVD算法（RSVD）。
+
+RSVD算法在原有的SVD损失函数基础上引入了正则化项，其完整的目标函数可以表示为：
+$$
+Σ(u,i) e²ui = min(qi,pu) Σ(u,i) (rui - Σ(k=1 to K) puk qᵀki)² + λ/2 Σu |pu|² + λ/2 Σi |qi|²
+$$
+其中λ > 0是正则化参数，用于控制正则化程度的强弱。正则化项的加入使得算法在拟合训练数据的同时，也会约束模型参数的复杂度，从而有效缓解过拟合问题。
+
+在RSVD算法的基础上，通过引入前述的隐式反馈机制来进一步优化算法性能，最终发展出了SVD++算法。SVD++算法将用户的历史浏览数据和历史评分数据作为新的参数引入模型中，其预测评分公式可以表示为：
+$$
+r̂ui = μ + bi + bu + qᵀi(pu + |N(u)|^(-1/2) Σ(j∈N(u)) yj)
+$$
+在这个公式中，各参数的含义如下：μ表示全局平均评分，反映了整个系统的评分基准；bi是商品i的偏置向量，用于捕捉商品相对于全局平均水平的系统性偏差；bu是用户u的偏置向量，反映了用户的个人评分习惯；qi是商品i的特征向量，代表商品在潜在因子空间中的表示；pu是用户u评分行为的特征向量；|N(u)|表示用户u的行为商品集合的大小；yj表示商品j的隐式反馈向量；而|N(u)|(-1/2) Σ(j∈N(u)) yj构成了用户u隐式反馈的特征向量，最终pu + |N(u)|(-1/2) Σ(j∈N(u)) yj表示融合了隐式反馈信息的用户u的完整特征向量。
+
+## 潜在因子模型与损失函数的详细分析
+
+为了更深入地理解SVD++算法的工作机制，需要详细分析其潜在因子模型和损失函数的构建过程。在SVD++模型中，用户偏置bi和商品偏置bu的计算具有明确的数学表达式。商品偏置bi的计算公式为：
+$$
+bi = Σ(u∈R(i)) (rui - μ) / (α + |R(i)|)
+$$
+而用户偏置bu的计算公式为：
+$$
+bu = Σ(i∈R(u)) (rui - μ - bi) / (β + |R(u)|)
+$$
+其中R(i)表示对商品i进行评分的用户集合，R(u)表示用户u评分过的商品集合，α和β是平滑参数，用于防止在数据稀疏情况下出现的数值不稳定问题。
+
+SVD++算法采用均方误差作为损失函数，其核心目标是使预测评分与实际评分之间的差值(rui - r̂ui)²尽可能小。如果考虑所有商品和样本的组合，这个优化目标可以表示为：
+$$
+min Σ(i,u) (rui - r̂ui)²
+$$
+由于rui是已知的实际评分，算法的任务就是找到使上述公式达到最小值时对应的r̂ui值，进而确定最优的pu和qi参数。通过这种方式，算法能够对评分矩阵R^(m×n)中的任意空白评分进行预测。
+
+为了防止过拟合现象的发生，SVD++算法在损失函数中加入了L2正则化项，完整的目标函数可以表示为：
+$$
+min Σ(i,u) [rui - μ - bi - bu - qᵀi(pu + |N(u)|^(-1/2) Σ(j∈N(u)) yj)]² + λ(||bu||² + ||bi||² + ||pu||² + ||qi||² + Σ(j∈N(u)) ||yj||²)
+$$
+其中λ表示正则化系数，用于平衡模型拟合程度和复杂度之间的关系。
+
+对于这个目标函数的求解，理论上可以采用两种主要方法：迭代最小二乘算法和梯度下降方法。在迭代最小二乘方法中，算法首先固定pu进行qi的优化，然后固定qi进行pu的优化，如此交替更新直至收敛。然而，这种方法在处理大规模数据时显得过于冗余且难以实现，因此实际应用中通常采用梯度下降方法。
+
+梯度下降方法的基本思想是假设要求解函数f(x)的最小值，首先选取一个初始点，计算该点的梯度，然后沿着梯度的反方向更新自变量。在第k次迭代中，如果当前的x值为x^(k)，那么第k+1次迭代的值可以表示为：
+$$
+x^(k+1) = x^(k) - α∇f(x^(k))
+$$
+其中α被称为步长或学习率，代表自变量在迭代过程中变化的幅度。算法会不断使用上述公式更新自变量，直到函数值的变化很小或达到最大迭代次数时停止，此时的自变量值即为函数的最小值点。
+
+为了避免陷入局部最优解，SVD++算法整体上采用随机梯度下降方法。通过计算损失函数对各个参数的偏导数，可以有效地求解迭代公式。对于给定的训练样本rui，算法通过沿着梯度的反方向移动来修改参数，具体的参数更新公式如下：
+$$
+eui ← rui - r̂ui
+bi ← bi + γ(eui - λbi)
+bu ← bu + γ(eui - λbu)
+pu ← pu + γ(eui · qi - λpu)
+qi ← qi + γ(eui · (pu + |N(u)|^(-1/2) Σ(j∈N(u)) yj) - λqi)
+yj ← yj + γ(eui · |N(u)|^(-1/2) · qi - λyj)
+$$
+其中γ是学习率参数，eui表示预测误差。这种参数更新机制使得SVD++算法能够逐步优化模型参数，最终达到较好的预测性能。
+
+## SVD算法实现
+
+SVD算法是推荐系统中最著名的矩阵分解方法，在Netflix Prize竞赛中由Simon Funk推广而闻名。该算法的核心预测公式基于用户和物品的偏置以及潜在因子的内积计算。当不使用偏置时，算法等价于概率矩阵分解方法。
+
+```python
+class SVD(AlgoBase):
+
+    def __init__(self, n_factors=100, n_epochs=20, biased=True, init_mean=0,
+                 init_std_dev=.1, lr_all=.005,
+                 reg_all=.02, lr_bu=None, lr_bi=None, lr_pu=None, lr_qi=None,
+                 reg_bu=None, reg_bi=None, reg_pu=None, reg_qi=None,
+                 random_state=None, verbose=False):
+
+        self.n_factors = n_factors
+        self.n_epochs = n_epochs
+        self.biased = biased
+        self.init_mean = init_mean
+        self.init_std_dev = init_std_dev
+        self.lr_bu = lr_bu if lr_bu is not None else lr_all
+        self.lr_bi = lr_bi if lr_bi is not None else lr_all
+        self.lr_pu = lr_pu if lr_pu is not None else lr_all
+        self.lr_qi = lr_qi if lr_qi is not None else lr_all
+        self.reg_bu = reg_bu if reg_bu is not None else reg_all
+        self.reg_bi = reg_bi if reg_bi is not None else reg_all
+        self.reg_pu = reg_pu if reg_pu is not None else reg_all
+        self.reg_qi = reg_qi if reg_qi is not None else reg_all
+        self.random_state = random_state
+        self.verbose = verbose
+
+        AlgoBase.__init__(self)
+```
+
+在代码实现中，算法通过随机梯度下降(SGD)来最小化正则化平方误差。关键的参数配置包括n_factors用于设定潜在因子数量（默认100），n_epochs控制SGD迭代次数（默认20次）。算法支持biased参数来决定是否使用偏置项，当设为False时可获得无偏版本。
+
+```python
+    def fit(self, trainset):
+
+        AlgoBase.fit(self, trainset)
+        self.sgd(trainset)
+
+        return self
+```
+
+用户和物品因子的初始化遵循正态分布，可通过init_mean和init_std_dev参数调节均值和标准差。学习率控制通过lr_all统一设置（默认0.005），或者分别为不同参数类型设置lr_bu、lr_bi、lr_pu、lr_qi。正则化参数同样支持统一设置reg_all（默认0.02）或分别配置。
+
+训练完成后，算法会生成四个重要属性：pu表示用户因子矩阵（n_users × n_factors），qi表示物品因子矩阵（n_items × n_factors），bu和bi分别表示用户和物品偏置向量。
+
+```python
+    def estimate(self, u, i):
+        # Should we cythonize this as well?
+
+        known_user = self.trainset.knows_user(u)
+        known_item = self.trainset.knows_item(i)
+
+        if self.biased:
+            est = self.trainset.global_mean
+
+            if known_user:
+                est += self.bu[u]
+
+            if known_item:
+                est += self.bi[i]
+
+            if known_user and known_item:
+                est += np.dot(self.qi[i], self.pu[u])
+
+        else:
+            if known_user and known_item:
+                est = np.dot(self.qi[i], self.pu[u])
+            else:
+                raise PredictionImpossible('User and item are unknown.')
+
+        return est
+```
+
+## SVD++算法扩展
+
+SVD++算法是SVD的扩展版本，其创新之处在于考虑了隐式评分信息。该算法引入了新的物品因子yj来捕获隐式评分，即用户对物品进行评分这一行为本身，而不考虑具体评分值。
+
+```python
+class SVDpp(AlgoBase):
+
+    def __init__(self, n_factors=20, n_epochs=20, init_mean=0, init_std_dev=.1,
+                 lr_all=.007, reg_all=.02, lr_bu=None, lr_bi=None, lr_pu=None,
+                 lr_qi=None, lr_yj=None, reg_bu=None, reg_bi=None, reg_pu=None,
+                 reg_qi=None, reg_yj=None, random_state=None, verbose=False,
+                 cache_ratings=False):
+
+        self.n_factors = n_factors
+        self.n_epochs = n_epochs
+        self.init_mean = init_mean
+        self.init_std_dev = init_std_dev
+        self.lr_bu = lr_bu if lr_bu is not None else lr_all
+        self.lr_bi = lr_bi if lr_bi is not None else lr_all
+        self.lr_pu = lr_pu if lr_pu is not None else lr_all
+        self.lr_qi = lr_qi if lr_qi is not None else lr_all
+        self.lr_yj = lr_yj if lr_yj is not None else lr_all
+        self.reg_bu = reg_bu if reg_bu is not None else reg_all
+        self.reg_bi = reg_bi if reg_bi is not None else reg_all
+        self.reg_pu = reg_pu if reg_pu is not None else reg_all
+        self.reg_qi = reg_qi if reg_qi is not None else reg_all
+        self.reg_yj = reg_yj if reg_yj is not None else reg_all
+        self.random_state = random_state
+        self.verbose = verbose
+        self.cache_ratings = cache_ratings
+
+        AlgoBase.__init__(self)
+```
+
+在代码参数配置上，SVD++的n_factors默认值调整为20，学习率lr_all默认设为0.007。算法新增了cache_ratings参数来决定是否在训练时缓存评分数据，这能加速训练但会增加内存占用。与SVD相比，SVD++增加了lr_yj和reg_yj参数来控制隐式因子的学习率和正则化。
+
+训练后的模型会额外生成yj属性，表示隐式物品因子矩阵（n_items × n_factors），这与显式的qi因子矩阵配合使用，提升了预测准确性。
+
+```python
+    def estimate(self, u, i):
+
+        est = self.trainset.global_mean
+
+        if self.trainset.knows_user(u):
+            est += self.bu[u]
+
+        if self.trainset.knows_item(i):
+            est += self.bi[i]
+
+        if self.trainset.knows_user(u) and self.trainset.knows_item(i):
+            Iu = len(self.trainset.ur[u])  # nb of items rated by u
+            u_impl_feedback = (sum(self.yj[j] for (j, _)
+                               in self.trainset.ur[u]) / np.sqrt(Iu))
+            est += np.dot(self.qi[i], self.pu[u] + u_impl_feedback)
+
+        return est
+```
+
+# NMF
+
+## 非负矩阵分解算法的基本原理与应用
+
+非负矩阵分解（Non-Negative Matrix Factorization, NMF）是一种重要的数据分析技术，其核心思想是将大规模数据集分解为更小且具有实际意义的组成部分，同时确保所有数值保持非负性。这种约束条件使得NMF在提取数据中有用特征方面表现出色，并且大大简化了数据的分析和处理过程。与传统的矩阵分解方法相比，NMF的非负性约束更符合许多实际应用场景的物理意义，例如在图像处理中像素值不能为负，在文本分析中词频不能为负等情况。
+
+## NMF中的矩阵分解与表示方法
+
+对于一个维度为m × n的矩阵A，其中每个元素都大于等于0，NMF算法将其分解为两个矩阵W和H，这两个矩阵的维度分别为m × k和k × n，且两个矩阵都只包含非负元素。这种分解关系可以用数学公式表示为：
+$$
+A(m×n) ≈ W(m×k) × H(k×n)
+$$
+![Lightbox](https://media.geeksforgeeks.org/wp-content/uploads/20210429213042/Intuition1-660x298.png)
+
+在这个分解公式中，各个矩阵具有明确的物理含义和数学意义。原始输入矩阵A代表了待分析的数据，它可以被理解为矩阵W和H的线性组合。特征矩阵W包含了数据的基础组件，这些组件可以被视为构成原始数据的基本模式或特征向量。系数矩阵H则包含了与W相关联的权重信息，它描述了每个基础组件在重构原始数据时所占的比重。参数k表示分解的秩，也就是降维表示的维度，通常满足k ≤ min(m, n)的约束条件。
+
+NMF的核心优势在于它能够通过假设每个数据点都可以表示为W中基本特征的组合来识别数据中的隐藏模式。这种分解方式不仅保持了数据的非负性特征，更重要的是提供了一种直观且可解释的数据表示方法，使得分解结果具有明确的物理意义和实际应用价值。
+
+## NMF算法的直觉理解与应用场景
+
+NMF算法的设计理念基于一个重要的观察：复杂的数据往往可以简化为一组更小且更有意义的模式集合。通过选择较低的维度k，这种分解过程能够突出数据中的本质特征，同时有效地忽略噪声和冗余信息。在NMF的框架下，原始数据中的每个数据点（对应矩阵A的列）都可以近似表示为特征矩阵W中非负特征向量的线性组合。
+
+这种方法的基本假设是数据由有意义的部分组成，这些部分通过相加的方式形成完整的数据结构。这种加法组合的特性使得NMF在许多实际应用中表现出色，特别是在需要部分-整体关系解释的场景中。例如，在人脸识别应用中，NMF可以将人脸图像分解为基本的面部特征，如眼睛、鼻子和嘴巴等组件。在这种情况下，特征矩阵W包含了这些关键的面部特征模板，而系数矩阵H则定义了每张人脸图像是如何由这些基本特征以不同强度组合而成的。
+
+类似地，在文本挖掘领域，NMF可以将文档-词汇矩阵分解为主题矩阵和文档-主题关系矩阵，从而实现主题建模和文档聚类。在音频信号处理中，NMF能够将复杂的音频信号分解为基本的音频组件，实现音源分离和音乐分析。这种广泛的适用性使得NMF成为数据挖掘和机器学习领域中一个重要且实用的工具。
+
+## NMF算法的工作机制与优化过程
+
+NMF算法通过迭代优化过程将数据矩阵A分解为两个较小的矩阵W和H，其核心目标是最小化重构误差，即原始矩阵A与分解乘积W × H之间的差异。算法的工作流程可以分为几个关键步骤，每个步骤都对最终的分解质量起到重要作用。
+
+首先，算法需要进行初始化操作，为矩阵W和H设置随机的非负初始值。这个初始化过程对算法的收敛性能有显著影响，通常采用均匀分布或正态分布的非负随机数进行初始化。合理的初始化策略可以加速算法收敛并提高最终结果的质量。
+
+接下来，算法进入迭代更新阶段，通过反复修改W和H的值来最小化A与W × H之间的差异。这个过程的数学目标是优化以下目标函数：
+$$
+min ||A - WH||²F
+$$
+其中||·||F表示Frobenius范数。在每次迭代中，算法会计算当前的重构误差，并根据优化准则调整矩阵W和H的元素值。
+
+算法的停止准则通常基于以下几个条件之一：重构误差的变化量小于预设的阈值，表明算法已经收敛到稳定状态；达到预设的最大迭代次数，防止算法运行时间过长；或者满足其他用户定义的收敛条件。
+
+在NMF的优化过程中，最常用的技术包括乘法更新规则和交替最小二乘法。乘法更新规则是NMF算法中最经典的优化方法，其主要优势在于能够通过迭代调整W和H来自动保证非负性约束。具体的更新公式可以表示为：
+$$
+W_ij ← W_ij * (AH^T)_ij / (WHH^T)_ij
+H_ij ← H_ij * (W^TA)_ij / (W^TWH)_ij
+$$
+这种更新规则确保了在每次迭代过程中，矩阵W和H的所有元素都保持非负，同时逐步减少目标函数的值。
+
+另一种重要的优化技术是交替最小二乘法（Alternating Least Squares, ALS），该方法通过固定其中一个矩阵来求解另一个矩阵的最优值，然后交替进行这个过程。在ALS方法中，当固定矩阵H时，求解矩阵W变成一个约束最小二乘问题；同样，当固定矩阵W时，求解矩阵H也是一个约束最小二乘问题。这种交替优化的策略在某些情况下能够获得比乘法更新规则更快的收敛速度，特别是在处理大规模稀疏数据时表现更为出色。
+
+总的来说，NMF算法通过这种迭代优化机制，能够有效地发现数据中的潜在结构和模式，为各种实际应用提供了强有力的数据分析工具。其非负性约束不仅保证了结果的可解释性，也使得分解结果更符合许多实际问题的物理特征和业务需求。
+
+## NMF代码实现
+
+NMF算法基于非负矩阵分解理论，确保所有用户和物品因子保持非负值。该算法的预测公式与SVD相似，但通过特殊的梯度下降步长选择来维持因子的非负性约束。
+
+```py
+class NMF(AlgoBase):
+
+    def __init__(self, n_factors=15, n_epochs=50, biased=False, reg_pu=.06,
+                 reg_qi=.06, reg_bu=.02, reg_bi=.02, lr_bu=.005, lr_bi=.005,
+                 init_low=0, init_high=1, random_state=None, verbose=False):
+
+        self.n_factors = n_factors
+        self.n_epochs = n_epochs
+        self.biased = biased
+        self.reg_pu = reg_pu
+        self.reg_qi = reg_qi
+        self.lr_bu = lr_bu
+        self.lr_bi = lr_bi
+        self.reg_bu = reg_bu
+        self.reg_bi = reg_bi
+        self.init_low = init_low
+        self.init_high = init_high
+        self.random_state = random_state
+        self.verbose = verbose
+
+        if self.init_low < 0:
+            raise ValueError('init_low should be greater than zero')
+
+        AlgoBase.__init__(self)
+```
+
+在参数设置上，NMF的n_factors默认值较小（15），但n_epochs增加到50次以确保充分收敛。算法默认不使用偏置（biased=False），但可以启用偏置版本来提高准确性，尽管这可能增加过拟合风险。
+
+NMF的关键配置包括reg_pu和reg_qi（默认0.06）来控制用户和物品因子的正则化，以及init_low和init_high（默认0到1）来设置因子初始化范围。由于算法对初始值高度敏感，这两个参数的调节需要格外谨慎。
+
+```python
+    def estimate(self, u, i):
+        # Should we cythonize this as well?
+
+        known_user = self.trainset.knows_user(u)
+        known_item = self.trainset.knows_item(i)
+
+        if self.biased:
+            est = self.trainset.global_mean
+
+            if known_user:
+                est += self.bu[u]
+
+            if known_item:
+                est += self.bi[i]
+
+            if known_user and known_item:
+                est += np.dot(self.qi[i], self.pu[u])
+
+        else:
+            if known_user and known_item:
+                est = np.dot(self.qi[i], self.pu[u])
+            else:
+                raise PredictionImpossible('User and item are unknown.')
+
+        return est
+```
+
+这三种算法都支持random_state参数来控制随机数生成，确保结果的可重现性，并提供verbose参数来显示训练进度。在实际应用中，开发者需要根据具体数据特征和性能要求来选择合适的算法和参数配置，以获得最佳的推荐效果。
+
+# Slope one
+
+## Slope One算法的基本原理与设计思想
+
+Slope One算法是一种简单而高效的协同过滤推荐算法，由Daniel Lemire和Anna Maclachlan于2005年首次提出。该算法的核心思想基于一个重要的观察：不同用户对同一对商品的评分差异往往保持相对稳定。换句话说，如果用户A对商品i的评分比对商品j的评分高2分，那么其他用户对这两个商品的评分差异也很可能接近2分。这种基于评分差异的线性关系假设使得Slope One算法能够通过计算商品间的平均评分差异来进行有效的评分预测，而无需进行复杂的矩阵分解或相似度计算。
+
+Slope One算法的名称来源于其预测模型的数学形式，该模型可以表示为一条斜率为1的直线。与传统的协同过滤算法相比，Slope One算法具有计算简单、易于理解和实现的特点，同时在许多实际应用场景中能够取得令人满意的推荐效果。该算法特别适用于用户评分数据相对稠密且评分差异模式较为稳定的推荐系统。
+
+## Slope One算法的数学模型与公式推导
+
+Slope One算法的核心在于计算和维护商品间的平均评分差异。对于任意两个商品i和j，算法首先计算所有同时对这两个商品进行过评分的用户的评分差异，然后求取这些差异的平均值作为商品i和j之间的偏差值。数学上，商品i相对于商品j的平均偏差可以表示为：
+$$
+dev(i,j) = Σ(u∈S(i,j)) (r_ui - r_uj) / |S(i,j)|
+$$
+其中，S(i,j)表示同时对商品i和j进行过评分的用户集合，r_ui和r_uj分别表示用户u对商品i和j的评分，|S(i,j)|表示集合S(i,j)的大小。这个偏差值反映了用户群体对商品i相对于商品j的整体偏好程度。
+
+基于计算得到的商品间偏差值，Slope One算法可以预测用户u对未评分商品i的评分。预测公式采用加权平均的方式，考虑用户u已评分的所有商品与目标商品i之间的偏差关系：
+$$
+r̂_ui = (Σ(j∈R_u) (r_uj + dev(i,j)) × |S(i,j)|) / (Σ(j∈R_u) |S(i,j)|)
+$$
+其中，R_u表示用户u已经评分过的商品集合。在这个预测公式中，每个已评分商品j对预测结果的贡献由两部分组成：用户u对商品j的实际评分r_uj，以及商品i相对于商品j的平均偏差dev(i,j)。权重|S(i,j)|表示计算偏差值dev(i,j)时使用的样本数量，样本数量越多，对应的偏差值越可靠，因此在预测中应该给予更高的权重。
+
+## 算法的计算过程与实现机制
+
+Slope One算法的实现过程相对简单直观，主要分为两个阶段：预计算阶段和预测阶段。在预计算阶段，算法需要遍历所有的用户评分数据，计算每对商品之间的平均偏差值。这个过程的时间复杂度为O(n²m)，其中n是商品数量，m是用户数量。虽然这个复杂度看似较高，但由于预计算只需要进行一次，且结果可以持久化存储，因此在实际应用中是可以接受的。
+
+```python
+class SlopeOne(AlgoBase):
+
+    def __init__(self):
+
+        AlgoBase.__init__(self)
+
+    def fit(self, trainset):
+
+        cdef int n_items = trainset.n_items
+
+        cdef long [:, ::1] freq = np.zeros((trainset.n_items, trainset.n_items), np.int_)
+        cdef double [:, ::1] dev = np.zeros((trainset.n_items, trainset.n_items), np.double)
+        cdef int u, i, j, r_ui, r_uj
+
+        AlgoBase.fit(self, trainset)
+
+        for u, u_ratings in trainset.ur.items():
+            for i, r_ui in u_ratings:
+                for j, r_uj in u_ratings:
+                    freq[i, j] += 1
+                    dev[i, j] += r_ui - r_uj
+
+        for i in range(n_items):
+            dev[i, i] = 0
+            for j in range(i + 1, n_items):
+                dev[i, j] /= freq[i, j]
+                dev[j, i] = -dev[i, j]
+
+        self.freq = np.asarray(freq)
+        self.dev = np.asarray(dev)
+
+        self.user_mean = [np.mean([r for (_, r) in trainset.ur[u]])
+                          for u in trainset.all_users()]
+
+        return self
+```
+
+在预测阶段，当需要为用户u预测对商品i的评分时，算法会查找用户u已评分的所有商品，然后利用这些商品与目标商品i之间的预计算偏差值来生成预测评分。这个过程的时间复杂度为O(|R_u|)，其中|R_u|是用户u已评分的商品数量。由于大多数用户的评分商品数量相对有限，因此预测过程通常很快。
+
+```py
+    def estimate(self, u, i):
+
+        if not (self.trainset.knows_user(u) and self.trainset.knows_item(i)):
+            raise PredictionImpossible('User and/or item is unknown.')
+
+        Ri = [j for (j, _) in self.trainset.ur[u] if self.freq[i, j] > 0]
+        est = self.user_mean[u]
+        if Ri:
+            est += sum(self.dev[i, j] for j in Ri) / len(Ri)
+
+        return est
+```
+
+为了进一步提高算法的性能和准确性，研究者们提出了Slope One算法的几种变体。加权Slope One算法在原始公式的基础上引入了额外的权重因子，以更好地处理评分数据的不均匀分布问题。双向Slope One算法同时考虑了商品i到商品j和商品j到商品i的偏差，通过双向预测的方式提高预测精度。
