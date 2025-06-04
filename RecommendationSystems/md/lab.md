@@ -514,7 +514,543 @@ class SlopeOne(AlgoBase):
 
 为了进一步提高算法的性能和准确性，研究者们提出了Slope One算法的几种变体。加权Slope One算法在原始公式的基础上引入了额外的权重因子，以更好地处理评分数据的不均匀分布问题。双向Slope One算法同时考虑了商品i到商品j和商品j到商品i的偏差，通过双向预测的方式提高预测精度。
 
+### LeastSquares CF
 
+#### 算法原理
+
+==**最小二乘协同过滤的核心思想**== 该方法基于一个核心假设：**每个物品的评分模式可以通过其他相关物品的评分线性表示**。这种线性依赖关系源于用户行为模式的稳定性——如果用户对一组特征物品的评分模式与目标物品存在稳定的数学关系，那么这种关系可以通过线性回归模型精确捕捉。算法本质上是为每个目标物品𝑖构建定制化的预测模型，通过最小二乘法求解最优权重系数，直接从用户-物品评分数据中提取物品间的内在关联。
+
+==**特征物品选择策略**== 在为特定目标物品𝑖构建模型前，算法首先识别与其关联性最强的特征物品集合𝐼𝑘。这种关联性不是基于内容相似性，而是纯粹基于用户行为模式的统计相关性。具体而言，选择那些与目标物品𝑖共同被评分频率最高的𝑘个物品（即`top_n`参数控制的特征物品数量）。这一过程可以形式化为：
+$$
+\text{feature\_items} = \underset{j \neq i}{\mathrm{argtopk}} \left( \sum_{u \in U_i} \mathbf{1}_{(u,j) \in R} \right)
+$$
+- 其中$U_i$表示所有对物品𝑖评分的用户集合，$\mathbf{1}$是指示函数。这种方法确保特征物品与目标物品具有强行为关联性，为后续建模提供可靠基础。选择共同评分频率最高的物品而非相似度最高的物品，使模型能更直接地捕捉用户行为模式中的关联性。
+
+==**线性回归模型构建**== 确定了特征物品集后，算法建立线性回归模型描述目标物品与特征物品的关系：
+$$
+R_{u,i} = \sum_{j \in I_k} w_j \cdot R_{u,j} + \epsilon
+$$
+- 其中，$R_{u,i}$ 表示用户 $u$ 对目标物品 $i$ 的评分，$I_k$ 是与 $i$ 相关的 $k$ 个特征物品集合，$w_j$ 为特征物品 $j$ 的线性权重，$R_{u,j}$ 是用户 $u$ 对特征物品 $j$ 的评分，$\epsilon$ 为残差项。
+
+通过最小二乘法求解权重向量 $w$，最小化所有评分用户的残差平方和：
+$$
+\min_w \sum_{u \in U_i} \left( R_{u,i} - \sum_{j \in I_k} w_j \cdot R_{u,j} \right)^2
+$$
+- $U_i$ 表示对目标物品 $i$ 有评分的用户集合，$w$ 是待优化的权重向量。
+
+这一优化问题的求解在代码中通过`np.linalg.lstsq`函数高效实现，该函数使用奇异值分解等数值稳定方法，即使特征矩阵存在轻度共线性也能获得可靠解。每个目标物品𝑖都有其独特的权重向量$w$，这种定制化建模使算法能精确捕捉不同物品的独特依赖模式。
+
+==**缺失值处理机制**== 面对真实场景中用户可能未对所有特征物品评分的情况，算法采用全局平均分$R_{\text{global}}$进行合理填补：
+$$
+\hat{R}_{u,j} = \begin{cases} 
+R_{u,j} & \text{if } (u,j) \in R \\
+R_{\text{global}} & \text{otherwise}
+\end{cases}
+$$
+
+这种策略在保持数据完整性的同时避免引入额外偏差，使模型在数据稀疏条件下仍保持稳健性。全局平均分作为中性基准值，既不偏向高评分用户也不偏向低评分用户，确保填补值的公平性。
+
+==**评分预测**== 预测用户𝑢对物品𝑖的评分时，算法执行两阶段计算：首先获取用户𝑢对特征物品集$I_k$的评分（缺失值用$R_{\text{global}}$填充），然后将这些特征评分与训练所得权重$w$进行线性组合：
+$$
+\hat{R}_{u,i} = \sum_{j \in I_k} w_j \cdot \hat{R}_{u,j}
+$$
+
+最终通过截断函数约束预测值在合理范围，确保输出符合业务逻辑：
+$$
+\hat{R}_{u,i} = \max(0, \min(100, \hat{R}_{u,i}))
+$$
+这种边界约束防止因极端权重组合产生不合理预测值，维护推荐系统的可信度。
+
+最小二乘协同过滤在物品间存在显式依赖关系的场景中表现突出，如系列电影、同品牌商品或技术规格相似的产品推荐。通过为每个物品定制线性组合模型，它能精确捕捉物品间的关联模式，相比传统邻域方法具有更强的解释性——权重系数直接量化特征物品对目标物品的影响程度。然而，该方法也面临计算复杂度随top_n增大而增加的问题，且对新物品存在冷启动挑战（缺乏历史评分无法构建模型）。模型效果还依赖于用户对特征物品的覆盖率，当用户评分记录过少时预测可靠性降低。
+
+#### 代码实现
+
+==**数据准备与索引构建**== 算法初始阶段构建全局评分基准和高效的双向查询结构。通过遍历训练字典，同时建立用户->物品的正向索引和物品->用户的倒排索引，为后续特征选择提供即时访问能力。全局平均分的计算为缺失值填补建立中立基准：
+
+```python
+# 收集所有评分计算全局均值（缺失值填补基准）
+all_ratings = []
+for user, items in train_dict.items():
+    for item, rating in items.items():
+        self.user_ratings[user][item] = rating  # 用户->物品索引
+        all_ratings.append(rating)
+self.global_mean = np.mean(all_ratings) if all_ratings else 0
+
+# 构建物品->用户的倒排索引（加速特征物品选择）
+item_user = defaultdict(dict)
+for user, items in self.user_ratings.items():
+    for item, score in items.items():
+        item_user[item][user] = score  # 物品->用户索引
+```
+
+这种双向索引设计使算法能快速响应两种关键查询："用户评过哪些物品"和"物品被哪些用户评过分"，大幅提升后续特征选择的效率。全局平均分作为数据中性基准，为缺失值填补提供合理依据。
+
+==**特征物品选择过程**== 针对每个目标物品，算法直接分析其评分用户群体的行为模式，统计这些用户评分的其他物品的共现频率。通过Python的Counter类高效完成频次统计，并选择最高频的𝑘个物品作为特征集：
+
+```python
+other_items_counter = Counter()
+# 遍历目标物品的所有评分用户
+for user in item_user[target_item].keys():
+    # 收集该用户除目标物品外的所有评分物品
+    other_items = [item for item in self.user_ratings[user] if item != target_item]
+    other_items_counter.update(other_items)  # 更新共现频次
+
+# 选取共现频率最高的top_n个物品
+most_common_items = other_items_counter.most_common(self.top_n)
+feature_items = [item for item, _ in most_common_items]  # 提取物品ID
+```
+
+这种方法从行为数据中直接挖掘"评过目标物品的用户还常评哪些物品"的关联模式，比传统相似度计算更直观高效。特征物品选择完全基于实际用户行为，确保模型建立在真实的关联模式上。
+
+==**模型训练与权重求解**== 对于每个目标物品，算法构建特征矩阵X和目标向量y。特征矩阵的每行对应一个用户对特征物品的评分（缺失值用全局平均分填补），目标向量则为这些用户对目标物品的真实评分：
+
+```python
+X, y = [], []
+for user in item_user[target_item].keys():
+    # 构建特征向量：用户对特征物品的评分（缺失时用全局均值填补）
+    features = [self.user_ratings[user].get(item, self.global_mean) 
+                for item in feature_items]
+    X.append(features)
+    y.append(self.user_ratings[user][target_item])  # 目标物品真实评分
+
+# 使用NumPy的最小二乘求解器（自动处理秩亏问题）
+weights, _, _, _ = np.linalg.lstsq(np.array(X), np.array(y), rcond=None)
+self.item_weights[target_item] = (feature_items, weights)  # 存储模型
+```
+
+关键点在于`self.user_ratings[user].get(item, self.global_mean)`调用，它优雅地处理了用户未评分特征物品的情况。`rcond=None`参数使求解器自动调整对病态矩阵的处理策略，确保数值稳定性。每个物品的权重向量独立存储，实现完全个性化的预测模型。
+
+==**分层预测策略**== 预测阶段根据物品和用户状态采用不同策略：对已训练物品使用定制线性模型；对新物品但老用户采用用户平均分；全新实体采用全局平均分：
+
+```python
+def predict(self, user_id, item_id):
+    # 新物品处理：回退到用户平均分或全局平均分
+    if item_id not in self.item_weights:
+        user_ratings = self.user_ratings.get(user_id, {})
+        return np.mean(list(user_ratings.values())) if user_ratings else self.global_mean
+    
+    # 已有模型的物品：获取特征物品列表和权重向量
+    feature_items, weights = self.item_weights[item_id]
+    user_ratings = self.user_ratings.get(user_id, {})
+    
+    # 动态构建特征向量（缺失值用全局均值填补）
+    features = [user_ratings.get(item, self.global_mean) for item in feature_items]
+    
+    # 点积计算预测分并约束范围
+    pred = np.dot(weights, features)
+    return max(0, min(100, pred))  # 强制在0-100分范围内
+```
+
+这种分层设计确保在各种边界情况下都有合理预测：`item_id not in self.item_weights`处理新物品冷启动，`user_ratings.get(user_id, {})`处理新用户。最后的截断操作维护评分系统的边界一致性。
+
+==**流式评估与指标计算**== 评估过程采用增量计算方式，仅需存储当前预测误差的累加值，无需缓存整个验证集的预测结果：
+
+```python
+mae, rmse, count = 0, 0, 0
+for user, items in val_dict.items():
+    for item, true_rating in items.items():
+        pred = self.predict(user, item)  # 实时预测
+        mae += abs(pred - true_rating)  # 累加绝对误差
+        rmse += (pred - true_rating) ** 2  # 累加平方误差
+        count += 1
+
+# 计算最终指标
+mae /= count
+rmse = (rmse / count) ** 0.5
+```
+
+这种流式处理使内存占用保持恒定，不受验证集规模影响。平方根运算在累加完成后执行一次，避免重复计算开销。
+
+### GDLinearCF
+
+GDLinearCF的核心思想是**利用目标物品的相似物品评分作为特征**，通过线性模型学习用户评分模式。这种方法跟多关注物品间的关联性，并通过机器学习模型捕捉这些关联与最终评分之间的复杂关系。整个算法流程围绕三个核心阶段展开：物品相似度计算、特征工程构建和梯度下降模型训练。
+
+#### 算法原理
+
+模型的核心假设是：**用户对目标物品的评分可以由其相似物品的评分线性表示**。这个假设基于物品间的内在关联性，比如用户如果喜欢某个导演的电影，很可能也会喜欢该导演的其他作品。整个算法流程分为三个关键阶段：
+
+==**相似度计算**== 采用余弦相似度衡量物品间的相似性：
+$$
+\text{sim}(i,j) = \frac{\sum_{u \in U_{ij}} R_{u,i} \cdot R_{u,j}}{\sqrt{\sum_{u \in U_{ij}} R_{u,i}^2} \cdot \sqrt{\sum_{u \in U_{ij}} R_{u,j}^2}}
+$$
+
+- $U_{ij}$ 代表同时对物品 $i$ 和 $j$ 评分的用户集合。算法只保留正相似度关系，避免负相关带来的干扰。
+
+每个物品仅保留相似度最高的K个邻居，形成相似物品字典 `topk_dict`。这种设计确保了计算效率，同时聚焦于最相关的物品关联。
+
+==**特征工程**== 这是模型的核心创新点。对于每个用户-物品评分记录 $(u,i)$，算法构建多维特征向量：
+1. **相似物品评分特征**：用户对目标物品的Top-K相似物品的评分（如K=10）
+2. **用户偏好特征**：用户的历史平均评分
+3. **物品特性特征**：目标物品的平均评分
+4. **全局基准特征**：整个数据集的平均评分
+
+特征向量 $X \in \mathbb{R}^{K+3}$ 的设计巧妙融合了用户偏好、物品特性和群体共识三个维度的信息。对于缺失的相似物品评分，算法采用物品平均分或全局平均分进行智能填充，确保特征完整性。
+
+==**模型训练**== 使用带L2正则化的线性回归模型：
+$$\hat{y} = w^T x + b$$
+损失函数设计为均方误差加正则项：
+$$\mathcal{L} = \frac{1}{N}\sum(y-\hat{y})^2 + \frac{\lambda}{2}\|w\|^2$$
+通过梯度下降优化参数，并引入学习率指数衰减策略：
+$$\eta_t = \eta_0 \times 0.95^t$$
+这种设计既防止过拟合，又确保训练后期参数更新更加精细，提升模型收敛稳定性。
+
+#### 代码实现
+
+==**数据加载与预处理**== 输入训练字典构建用户-物品评分矩阵，同时计算全局平均分：
+
+```python
+self.user_ratings = defaultdict(dict)
+all_ratings = []
+for user, items in train_dict.items():
+    for item, rating in items.items():
+        self.user_ratings[user][item] = rating
+        all_ratings.append(rating)
+self.global_mean = np.mean(all_ratings) if all_ratings else 0
+```
+
+在数据加载阶段，算法接受字典形式的训练数据，其中每个用户对应其评分物品的字典。通过双层循环，算法构建了`user_ratings`字典（用户为键，物品评分字典为值），同时收集所有评分计算全局平均分。这个全局平均分在后续处理中扮演重要角色，既作为特征的一部分，也是处理缺失值的默认值。
+
+==**物品相似度计算**== 构建物品-用户倒排表，高效计算物品对相似度：
+
+```python
+item_user = defaultdict(dict)
+for user, items in self.user_ratings.items():
+    for item, score in items.items():
+        item_user[item][user] = score
+```
+
+首先构建物品-用户倒排索引，这是计算物品相似度的关键数据结构。不同于传统的用户-物品矩阵，倒排索引以物品为中心组织数据，大幅提升相似度计算效率：
+
+```python
+for i, item_i in enumerate(items):
+    for j in range(i+1, len(items)):
+        item_j = items[j]
+        common_users = set(item_user[item_i].keys()) & set(item_user[item_j].keys())
+        if common_users:
+            v1 = np.array([item_user[item_i][u] for u in common_users])
+            v2 = np.array([item_user[item_j][u] for u in common_users])
+            sim = np.dot(v1, v2) / (np.linalg.norm(v1)*np.linalg.norm(v2))
+            if sim > 0:
+                sim_matrix[item_i][item_j] = sim
+                sim_matrix[item_j][item_i] = sim
+```
+
+相似度计算采用向量化操作提升效率。对于每对物品，先找到共同评分的用户集合，然后提取这些用户的评分形成向量。余弦相似度计算充分利用NumPy的优化函数，特别处理了分母为零的边界情况。算法只保留正相似度关系，避免负相关物品干扰模型。
+
+==**特征向量构建**== 为每个评分记录动态生成特征，智能处理缺失值：
+
+```python
+for user, items in self.user_ratings.items():
+    user_mean = np.mean(list(items.values())) if items else self.global_mean
+    for target_item, target_score in items.items():
+        features = []
+        # 获取相似物品列表
+        topk_items = self.topk_dict.get(target_item, [])
+        # 添加相似物品评分
+        for sim_item in topk_items:
+            rating = items.get(sim_item)  # 用户是否评分过该相似物品
+            if rating is None:
+                # 用物品平均分或全局平均分填充
+                rating = self.item_mean.get(sim_item, self.global_mean)
+            features.append(rating)
+        # 填充不足K个的特征
+        if len(features) < self.topk:
+            features += [self.global_mean] * (self.topk - len(features))
+        # 添加用户平均分
+        features.append(user_mean)
+        # 添加物品平均分
+        features.append(self.item_mean.get(target_item, self.global_mean))
+        # 添加全局平均分
+        features.append(self.global_mean)
+        X.append(features)
+        y.append(target_score)
+```
+
+特征构建是模型的核心创新点。对于每个用户-物品评分记录，算法先获取目标物品的Top-K相似物品列表。然后检查用户是否对这些相似物品评过分：若有则采用实际评分，否则使用物品平均分或全局平均分智能填充。随后添加三个关键统计特征：用户历史平均分（反映用户评分习惯）、目标物品平均分（反映物品受欢迎程度）、全局平均分（提供基准参考）。这种多层次特征设计使模型能同时捕捉个性化偏好和群体趋势。
+
+==**归一化处理**== 标准化特征和标签，加速梯度下降收敛：
+
+```python
+self.X_mean = np.mean(X, axis=0)
+self.X_std = np.std(X, axis=0)
+# 防止除零错误
+self.X_std[self.X_std == 0] = 1
+# 特征标准化
+X_normalized = (X - self.X_mean) / self.X_std
+
+self.y_mean = np.mean(y)
+self.y_std = np.std(y)
+# 数值稳定性处理
+if self.y_std < 1e-8:
+    self.y_std = 1.0
+# 标签标准化
+y_normalized = (y - self.y_mean) / self.y_std
+```
+
+归一化处理是机器学习的关键预处理步骤。算法分别计算每个特征的均值和标准差，然后进行标准化：(特征值 - 均值)/标准差。这种处理使所有特征处于相近的数值范围，大幅提升梯度下降的效率和稳定性。特别值得注意的是对标准差为零的特征的处理——将其标准差设为1，避免除零错误。标签同样进行标准化，使模型更容易学习。
+
+==**梯度下降训练**== 实现带学习率衰减和梯度裁剪的优化过程：
+
+```python
+# 初始化模型参数
+w = np.random.randn(n_features) * 0.01  # 小随机数初始化
+b = 0.0  # 偏置项初始化
+
+for epoch in range(self.epochs):
+    # 学习率指数衰减
+    current_lr = self.lr * (0.95 ** epoch)
+    
+    # 前向传播：计算预测值
+    y_pred = X_normalized @ w + b
+    
+    # 计算误差
+    error = y_pred - y_normalized
+    
+    # 计算梯度（含L2正则化）
+    grad_w = (X_normalized.T @ error) / n_samples + self.reg_lambda * w
+    grad_b = np.mean(error)
+    
+    # 梯度裁剪防止爆炸
+    grad_w = np.clip(grad_w, -1.0, 1.0)
+    grad_b = np.clip(grad_b, -1.0, 1.0)
+    
+    # 参数更新
+    w -= current_lr * grad_w
+    b -= current_lr * grad_b
+
+# 保存训练结果
+self.w = w
+self.b = b
+```
+
+训练过程采用小批量梯度下降优化。每次迭代中，先计算当前学习率（指数衰减策略确保后期更新更精细）。然后进行前向传播计算预测值，并与真实值比较得到误差。梯度计算包含两部分：数据误差导数和L2正则化项。梯度裁剪技术将梯度限制在[-1,1]范围内，有效防止梯度爆炸问题。参数更新采用标准的梯度下降规则，学习率随迭代次数衰减使训练更稳定。
+
+==**预测流程**== 复用训练时的特征工程逻辑，确保一致性：
+
+```python
+# 获取用户历史评分
+user_history = self.user_ratings.get(user_id, {})
+# 计算用户平均分（用于特征）
+user_avg = np.mean(list(user_history.values())) if user_history else self.global_mean
+
+features = []
+# 获取目标物品的相似物品列表
+similar_items = self.topk_dict.get(item_id, [])[:self.topk]
+
+# 构建相似物品评分特征
+for sim_item in similar_items:
+    # 检查用户是否评分过该相似物品
+    if sim_item in user_history:
+        features.append(user_history[sim_item])
+    else:
+        # 使用物品平均分填充
+        features.append(self.item_mean.get(sim_item, self.global_mean))
+
+# 填充不足K个的特征
+features += [self.global_mean] * (self.topk - len(features))
+
+# 添加用户平均分特征
+features.append(user_avg)
+# 添加物品平均分特征
+features.append(self.item_mean.get(item_id, self.global_mean))
+# 添加全局平均分特征
+features.append(self.global_mean)
+
+# 转换为NumPy数组并标准化
+features = np.array(features)
+features_std = (features - self.X_mean) / self.X_std
+
+# 预测并反标准化
+pred_normalized = features_std @ self.w + self.b
+pred = pred_normalized * self.y_std + self.y_mean
+
+# 评分范围约束
+return max(0, min(100, pred))
+```
+
+对于给定的用户-物品对，算法首先获取用户历史评分，然后构建与训练时完全相同的特征向量：包括相似物品评分、用户平均分、物品平均分和全局平均分。特征标准化使用训练阶段保存的参数，确保相同处理方式。预测结果反标准化后，通过min-max函数约束在[0,100]的合理评分范围内。
+
+==**模型评估**== 计算预测评分与实际评分的MAE和RMSE：
+
+```python
+pred_list = []
+true_list = []
+
+# 遍历验证集所有用户
+for user_id, item_ratings in val_dict.items():
+    # 遍历用户的所有物品评分
+    for item_id, true_rating in item_ratings.items():
+        # 预测评分
+        pred_rating = self.predict(user_id, item_id)
+        pred_list.append(pred_rating)
+        true_list.append(true_rating)
+
+# 转换为NumPy数组
+pred_arr = np.array(pred_list)
+true_arr = np.array(true_list)
+
+# 计算MAE
+mae = np.mean(np.abs(pred_arr - true_arr))
+# 计算RMSE
+rmse = np.sqrt(np.mean((pred_arr - true_arr) ** 2))
+
+return mae, rmse
+```
+
+评估函数遍历验证字典中的每个用户-物品评分记录，调用预测函数得到预测评分，并与真实评分一起存储。最后计算两个关键指标：MAE（平均绝对误差）反映预测的平均偏差大小；RMSE（均方根误差）对较大误差给予更高惩罚，更敏感地反映预测的离群值情况。这两个指标共同评估模型在未知数据上的泛化能力。
+
+---
+
+### TopKNanCF
+
+TopKNanCF是一种创新的混合推荐算法，将物品协同过滤与梯度提升树（GBDT）模型相结合。其核心思想是**为每个目标物品独立训练预测模型，使用其最相似的物品作为特征输入**。这种方法通过机器学习模型捕捉用户评分与相似物品间的复杂非线性关系，并能智能处理特征缺失问题。
+
+#### 算法原理
+
+TopKNanCF基于一个关键想法：**用户对目标物品的评分模式，可以通过该用户对相似物品的评分组合来精确预测**。它为每个物品独立构建预测模型，充分利用物品间的局部关联性。
+
+==**物品相似度计算**== 采用余弦相似度衡量物品间的关联强度：
+$$
+\text{sim}(i,j) = \frac{\sum_{u \in U_{ij}} R_{u,i} \cdot R_{u,j}}{\sqrt{\sum_{u \in U_{ij}} R_{u,i}^2} \cdot \sqrt{\sum_{u \in U_{ij}} R_{u,j}^2}}
+$$
+
+- $U_{ij}$ 代表同时对物品 $i$ 和 $j$ 评分的用户集合。算法为每个物品计算其与所有其他物品的相似度，但只保留正相似度关系（负相关可能表示不相关甚至对立偏好）。这种设计确保模型聚焦于物品间的正向关联。
+
+==**特征工程与缺失处理**== 对于每个目标物品，算法选取其Top-K最相似物品作为特征集。当预测用户$u$对目标物品$i$的评分时，特征向量定义为：
+$$
+X_u = [R_{u,s_1}, R_{u,s_2}, \dots, R_{u,s_K}] \quad (s_k \in \text{TopK}(i))
+$$
+关键创新在于允许特征缺失 - 当用户未对某相似物品评分时，特征值设为`NaN`。GBDT模型能自动处理这种缺失，在节点分裂时优化缺失值路径，无需人工填充。
+
+==**梯度提升树模型**== 对每个目标物品独立训练GBDT回归模型：
+$$
+\hat{y} = \sum_{m=1}^M \gamma_m h_m(x)
+$$
+
+- $h_m$ 为决策树，$\gamma_m$ 为学习率。每棵树拟合当前残差（前序模型预测与真实值之差），通过迭代降低预测误差。算法选用`HistGradientBoostingRegressor`实现，该变种采用直方图算法加速训练，支持大规模数据。
+
+#### 代码实现
+
+==**数据加载与物品相似度矩阵构建**== 输入训练字典构建用户-物品评分矩阵：
+
+```python
+self.user_ratings = defaultdict(dict)
+all_ratings = []
+for user, items in train_dict.items():
+    for item, rating in items.items():
+        self.user_ratings[user][item] = rating
+        all_ratings.append(rating)
+self.global_mean = np.mean(all_ratings) if all_ratings else 0
+```
+
+首先遍历训练字典，构建三层嵌套结构：用户→物品→评分。同时收集所有评分计算全局平均分，作为冷启动的默认预测值。这种设计确保高效查询用户历史行为。
+
+```python
+item_user = defaultdict(dict)
+for user, items in self.user_ratings.items():
+    for item, score in items.items():
+        item_user[item][user] = score
+```
+
+构建物品-用户倒排索引，这是相似度计算的关键。与传统用户-物品矩阵不同，倒排索引以物品为中心组织数据，大幅提升物品对相似度计算效率，尤其当物品数远小于用户数时。
+
+```python
+for i in range(len(items)):
+    sim_matrix[items[i]] = dict()
+    for j in range(len(items)):
+        if i == j: continue
+        common_users = set(users_i.keys()) & set(users_j.keys())
+        vi = np.array([users_i[u] for u in common_users])
+        vj = np.array([users_j[u] for u in common_users])
+        num = np.dot(vi, vj)
+        denom = np.linalg.norm(vi) * np.linalg.norm(vj)
+        sim = num / denom if denom != 0 else 0
+        sim_matrix[items[i]][items[j]] = sim
+```
+
+相似度计算采用双重循环遍历所有物品对。对于每对物品，先找到共同评分的用户集合，然后提取这些用户的评分形成向量。余弦相似度计算通过向量点积和范数运算实现，特别处理分母为零的边界情况（设相似度为0）。生成的相似度矩阵存储为嵌套字典，键为物品ID，值为该物品与其他物品的相似度字典。
+
+==**GBDT模型训练**== 核心是为每个物品训练专属预测模型：
+
+```python
+for target_item in items:
+    # 获取Top-K相似物品
+    sim_items = sorted(sim_matrix.get(target_item, {}).items(), key=lambda x: x[1], reverse=True)
+    topk_items = [item for item, _ in sim_items[: self.topk]]
+    self.topk_dict[target_item] = topk_items
+```
+
+首先确定目标物品的Top-K相似物品。相似物品按相似度降序排序后取前K个，存储在`topk_dict`中供后续预测使用。这种局部关联性建模是算法高效的关键。
+
+```python
+X = []; y = []
+for user in users:
+    x = []
+    for item in topk_items:
+        # 关键：允许特征缺失(NaN)
+        x.append(user_ratings[item] if item in user_ratings else np.nan)
+    X.append(x)
+    y.append(user_ratings[target_item])
+```
+
+特征矩阵`X`的构建是算法精髓。对于目标物品的每个评分用户，遍历其Top-K相似物品：若用户评过分则取实际评分，否则设为`NaN`。标签`y`为用户对目标物品的实际评分。这种设计使模型能够学习在部分信息缺失情况下的评分模式。
+
+```python
+model = HistGradientBoostingRegressor(max_iter=100, random_state=42)
+model.fit(X, y)
+self.models[target_item] = model
+```
+
+使用`HistGradientBoostingRegressor`训练GBDT模型。该实现通过直方图近似加速训练，默认100次迭代平衡精度与效率。`random_state`确保可复现性。模型存储在字典中，键为目标物品ID，值为训练好的GBDT模型。
+
+==**预测流程与冷启动**== 多层回退机制确保预测鲁棒性：
+
+```python
+if item_id not in self.models or user_id not in self.user_ratings:
+    user_ratings = self.user_ratings.get(user_id, {})
+    return np.mean(list(user_ratings.values())) if user_ratings else self.global_mean
+```
+
+冷启动场景分三种情况处理：
+1. 目标物品无训练模型（新物品）
+2. 用户不在训练集（新用户）
+3. 物品有模型但用户无历史记录
+算法优先尝试使用用户历史平均分，若无历史记录则回退到全局平均分。
+
+```python
+x = []
+for i in topk_items:
+    x.append(user_ratings[i] if i in user_ratings else np.nan)
+x = np.array(x).reshape(1, -1)
+```
+
+特征构建逻辑与训练时完全一致：遍历目标物品的Top-K相似物品，若用户评过分则取值，否则置为`NaN`。向量重塑为二维数组以满足模型输入格式。
+
+```python
+try:
+    pred = self.models[item_id].predict(x)[0]
+except Exception:
+    pred = np.mean(list(user_ratings.values())) if user_ratings else self.global_mean
+```
+
+调用目标物品的GBDT模型预测评分。异常捕获机制防止预测失败：当模型异常时（如输入格式问题），回退到用户平均分或全局平均分。
+
+==**评估机制**== 标准指标量化模型性能：
+
+```python
+for user, items in val_dict.items():
+    for item, real_score in items.items():
+        pred = self.predict(user, item)
+        preds.append(pred)
+        reals.append(real_score)
+mae = np.mean(np.abs(preds - reals))
+rmse = np.sqrt(np.mean((preds - reals) ** 2))
+```
+
+评估函数遍历验证字典中的每个用户-物品评分记录，调用预测函数得到预测值。最终计算：
+- MAE(平均绝对误差)：反映预测偏差的平均幅度
+- RMSE(均方根误差)：对大误差更敏感，惩罚极端预测错误
+这两个互补指标全面评估模型在未知数据上的泛化能力。
 
 
 
@@ -932,477 +1468,4 @@ pred = max(self.min_rating, min(self.max_rating, pred))
 这种融合充分利用了全局、用户和物品三个层面的统计信息，既有图结构挖掘的相似度，又兼顾了用户与物品的固有评分倾向。
 
 
-
-### TopKNan CF
-
-
-
-#### 算法原理
-
-==TopKNanCF==是一种**集成相似物品选择与梯度提升树的协同过滤方法**。其核心思想是：**用户对目标物品的评分模式可由其最相似的K个物品的评分历史非线性决定**。与传统方法不同，该模型利用GBDT自动处理特征缺失和非线性关系，实现更鲁棒的预测。
-
-#### 算法架构
-
-1. **物品相似度网络**：
-   - 构建全连接物品相似度矩阵
-     $$
-     \text{sim}(i,j) = \frac{\sum_{u \in U_{ij}} R_{u,i} \cdot R_{u,j}}{\|R_i\|_2 \cdot \|R_j\|_2}
-     $$
-   - 为每个物品$i$选择Top-K个最相似物品$N(i)$
-
-2. **GBDT预测模型**：
-   - 对每个目标物品$i$独立训练专属GBDT模型
-   - 输入特征：用户对$N(i)$中物品的评分（允许缺失值）
-   - 输出预测：用户对$i$的评分
-   $$
-   \hat{R}_{u,i} = \sum_{m=1}^M \gamma_m h_m(\boldsymbol{x}_u)
-   $$
-   其中$h_m$为决策树，$\boldsymbol{x}_u = [R_{u,j_1}, \cdots, R_{u,j_K}]$
-
-3. **缺失值处理**：
-   - GBDT天然支持缺失值处理
-   - 在分裂节点时自动学习最优缺失值方向
-   - 无需人工填补，保留原始数据分布
-
-#### 算法优势
-| 特性               | 说明                       |
-| ------------------ | -------------------------- |
-| **非线性建模**     | 捕捉物品间复杂交互关系     |
-| **自动特征选择**   | 决策树自动筛选重要特征物品 |
-| **缺失值鲁棒性**   | 原生支持NaN值处理          |
-| **物品定制化模型** | 每个物品有专属预测器       |
-
-该模型在**隐式反馈数据**和**评分模式复杂**的场景中表现优异，能通过树结构自动学习特征交互，无需人工设计特征组合。
-
-
-
-#### 代码实现
-
-#### 相似度矩阵计算
-采用全连接方式计算物品相似度，确保覆盖所有物品对：
-
-```python
-sim_matrix = dict()
-for i in range(len(items)):
-    sim_matrix[items[i]] = dict()
-    for j in range(len(items)):
-        if i == j: 
-            continue  # 跳过自身
-        # 获取共同评分用户
-        users_i = item_user[items[i]]
-        users_j = item_user[items[j]]
-        common_users = set(users_i.keys()) & set(users_j.keys())
-        if not common_users:
-            continue
-        # 计算余弦相似度
-        vi = np.array([users_i[u] for u in common_users])
-        vj = np.array([users_j[u] for u in common_users])
-        num = np.dot(vi, vj)
-        denom = np.linalg.norm(vi) * np.linalg.norm(vj)
-        sim = num / denom if denom != 0 else 0
-        sim_matrix[items[i]][items[j]] = sim  # 存储所有相似度
-```
-
-#### GBDT模型训练
-为每个物品独立训练直方图梯度提升回归器：
-
-```python
-self.models = dict()
-self.topk_dict = dict()
-
-for target_item in items:
-    # 选择Top-K相似物品
-    sim_items = sorted(
-        sim_matrix.get(target_item, {}).items(),
-        key=lambda x: x[1],
-        reverse=True,
-    )
-    topk_items = [item for item, _ in sim_items[: self.topk]]
-    self.topk_dict[target_item] = topk_items  # 存储相似物品列表
-    
-    # 构建训练集（允许NaN）
-    X, y = [], []
-    users = list(item_user[target_item].keys())
-    for user in users:
-        x = []
-        for item in topk_items:
-            # 允许特征缺失（NaN）
-            x.append(self.user_ratings[user].get(item, np.nan))
-        X.append(x)
-        y.append(self.user_ratings[user][target_item])
-    
-    if X:  # 有训练样本时训练模型
-        X = np.array(X)
-        y = np.array(y)
-        model = HistGradientBoostingRegressor(max_iter=100, random_state=42)
-        model.fit(X, y)
-        self.models[target_item] = model  # 存储物品专属模型
-```
-
-#### 预测引擎
-利用训练好的GBDT模型进行预测，优雅处理冷启动：
-
-```python
-if item_id not in self.models:  # 物品冷启动
-    user_ratings = self.user_ratings.get(user_id, {})
-    return np.mean(list(user_ratings.values())) if user_ratings else self.global_mean
-
-# 构建特征向量（允许NaN）
-user_ratings = self.user_ratings[user_id]
-topk_items = self.topk_dict[item_id]
-x = []
-for i in topk_items:
-    x.append(user_ratings.get(i, np.nan))  # 保留NaN
-    
-# GBDT预测
-try:
-    pred = self.models[item_id].predict(np.array(x).reshape(1, -1))[0]
-except Exception:  # 预测失败回退
-    user_ratings = self.user_ratings.get(user_id, {})
-    pred = np.mean(list(user_ratings.values())) if user_ratings else self.global_mean
-return pred
-```
-
-#### 技术亮点
-1. **直方图梯度提升**：
-   - 特征值分桶加速训练
-   - 默认100棵树防止过拟合
-   - 内置缺失值处理机制
-
-2. **流式评估**：
-   ```python
-   for user, items in val_dict.items():
-       for item, real_score in items.items():
-           pred = self.predict(user, item)
-           preds.append(pred)
-           reals.append(real_score)
-   ```
-   增量计算指标，避免全量预测的内存压力
-
-3. **鲁棒性设计**：
-   - 模型训练异常跳过不影响整体
-   - 预测失败时回退到统计基准值
-   - NaN值保留原始数据分布
-
-
-
-## 线性优化模型
-
-
-
-
-### LeastSquares CF
-
-
-
-#### 算法原理
-
-最小二乘协同过滤 (LeastSquaresCF) 是一种基于**物品间线性依赖关系**的协同过滤方法。其核心假设是：**每个物品的评分可以被其他相关物品的评分线性表示**。与传统基于邻域的协同过滤不同，该方法为每个目标物品构建一个定制化的线性模型，通过最小二乘法求解最优权重系数，实现更精确的评分预测。
-
-#### 模型构建原理
-
-1. **特征物品选择**：  
-   对于目标物品𝑖，首先识别所有对𝑖评分的用户集合𝑈𝑖。随后统计这些用户评分过的其他物品，选择与𝑖共同出现频率最高的𝑘个物品作为特征物品集合𝐼𝑘（即代码中的`top_n`参数）。这种选择策略保证了特征物品与目标物品具有强行为关联性：
-   $$
-   \text{feature\_items} = \underset{j \neq i}{\mathrm{argtopk}} \left( \sum_{u \in U_i} \mathbf{1}_{(u,j) \in R} \right)
-   $$
-
-2. **最小二乘拟合**：  
-   以特征物品评分作为自变量，目标物品评分作为因变量，构建线性回归模型：
-   $$
-   R_{u,i} = \sum_{j \in I_k} w_j \cdot R_{u,j} + \epsilon
-   $$
-   通过最小二乘法求解权重向量𝑤，最小化残差平方和：
-   $$
-   \min_w \sum_{u \in U_i} \left( R_{u,i} - \sum_{j \in I_k} w_j \cdot R_{u,j} \right)^2
-   $$
-   使用`np.linalg.lstsq`实现数值稳定求解，自动处理秩亏矩阵。
-
-3. **缺失值处理**：  
-   当用户未对某个特征物品评分时，采用全局平均分𝑅global进行填补：
-   $$
-   \hat{R}_{u,j} = \begin{cases} 
-   R_{u,j} & \text{if } (u,j) \in R \\
-   R_{\text{global}} & \text{otherwise}
-   \end{cases}
-   $$
-   这种策略在保持数据完整性的同时避免引入额外偏差。
-
-#### 预测机制
-
-预测用户𝑢对物品𝑖的评分时，执行两步计算：
-1. **特征评分获取**：提取用户𝑢对特征物品集𝐼𝑘的评分（缺失值用𝑅global填充）
-2. **线性加权**：将特征评分与训练所得权重𝑤点积：
-   $$
-   \hat{R}_{u,i} = \sum_{j \in I_k} w_j \cdot \hat{R}_{u,j}
-   $$
-   最终通过截断函数约束预测值在合理范围：
-   $$
-   \hat{R}_{u,i} = \max(0, \min(100, \hat{R}_{u,i}))
-   $$
-
-#### 算法特性
-| 优势                                                                                   | 挑战                                                                          |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| • 为每个物品构建定制化模型<br>• 捕捉物品间复杂线性关系<br>• 通过特征选择降低过拟合风险 | • 计算复杂度随top_n增大<br>• 新物品冷启动问题<br>• 依赖用户对特征物品的覆盖率 |
-
-该模型特别适合**物品间存在显式依赖关系**的场景（如系列电影、同品牌商品），通过线性组合能更精确地表达物品间的关联模式，相比传统邻域方法具有更强的解释性。
-
-#### 代码实现
-
-#### 数据准备与全局统计
-
-在`fit_from_dict`初始化阶段，首先构建用户-物品评分字典的双向索引，同时计算全局平均分作为基础填补值。此处采用扁平化数据结构高效收集所有评分：
-
-```python
-# 构建用户评分字典并收集全局评分
-all_ratings = []
-for user, items in train_dict.items():
-    for item, rating in items.items():
-        self.user_ratings[user][item] = rating
-        all_ratings.append(rating)
-self.global_mean = np.mean(all_ratings) if all_ratings else 0  # 关键填补基准
-```
-
-同时建立物品→用户的倒排索引，加速后续特征物品筛选：
-
-```python
-item_user = defaultdict(dict)
-for user, items in self.user_ratings.items():
-    for item, score in items.items():
-        item_user[item][user] = score  # 物品视角的评分记录
-```
-
-#### 特征物品选择策略
-
-针对每个目标物品，通过**共现频率统计**确定最具预测力的特征物品集。使用`Counter`高效实现Top-k筛选：
-
-```python
-other_items_counter = Counter()
-for user in users:  # 遍历评分过目标物品的用户
-    # 收集该用户除目标物品外的所有评分物品
-    other_items = [item for item in self.user_ratings[user] if item != target_item]
-    other_items_counter.update(other_items)  # 频次累积
-
-# 选择频率最高的top_n个物品作为特征
-most_common_items = [item for item, _ in other_items_counter.most_common(self.top_n)]
-```
-
-此设计保证特征物品与目标物品有足够多的共同评分用户，增强模型的统计显著性。当无符合条件的特征物品时，跳过该物品的模型构建。
-
-#### 最小二乘求解引擎
-
-构建特征矩阵𝑋和标签向量𝑦时，采用**全局均值填补缺失值**策略，确保矩阵完整性：
-
-```python
-X, y = [], []
-for user in users:
-    user_ratings = self.user_ratings[user]
-    if target_item in user_ratings:
-        # 特征向量：用户对特征物品的评分（缺失时用全局均值）
-        x = [user_ratings.get(item, self.global_mean) for item in most_common_items]
-        X.append(x)
-        y.append(user_ratings[target_item])  # 目标物品真实评分
-```
-
-使用NumPy的`lstsq`函数求解最小二乘问题，其`rcond=None`参数自动处理病态矩阵：
-
-```python
-X = np.array(X)
-y = np.array(y)
-w, _, _, _ = np.linalg.lstsq(X, y, rcond=None)  # 鲁棒求解
-self.item_weights[target_item] = (most_common_items, w)  # 存储特征集和权重
-```
-
-异常处理机制确保单个物品拟合失败不影响整体流程。
-
-#### 预测与冷启动处理
-
-预测阶段采用分级回退策略应对数据稀疏问题：
-1. **物品冷启动**：目标物品未训练 → 返回用户平均分（若存在）或全局平均分
-2. **用户冷启动**：用户无历史记录 → 直接返回全局平均分
-3. **特征缺失**：用户未评全特征物品 → 用全局均值填补空缺
-
-```python
-def predict(self, user_id, item_id):
-    # 冷启动分级处理
-    if item_id not in self.item_weights:  # 物品未训练
-        user_ratings = self.user_ratings.get(user_id, {})
-        return np.mean(list(user_ratings.values())) if user_ratings else self.global_mean
-    
-    other_items, w = self.item_weights[item_id]
-    user_ratings = self.user_ratings[user_id]
-    # 允许部分缺失的特征填补
-    x = np.array([user_ratings.get(i, self.global_mean) for i in other_items])
-    pred = np.dot(w, x)  # 权重与特征的点积
-    return max(0, min(100, pred))  # 值域约束
-```
-
-#### 评估机制
-
-评估函数采用**逐点计算模式**，避免全量预测的内存开销，支持流式大数据处理：
-
-```python
-mae, rmse, count = 0, 0, 0
-for user, items in val_dict.items():
-    for item, true_rating in items.items():
-        pred = self.predict(user, item)  # 按需预测
-        mae += abs(pred - true_rating)  # 增量更新MAE
-        rmse += (pred - true_rating) ** 2  # 增量更新RMSE
-        count += 1
-# 最终指标计算
-mae /= count
-rmse = np.sqrt(rmse / count)
-```
-
-此设计尤其适合大规模数据场景，无需预先构建全量预测矩阵。
-
-
-
-
-
-### GDLinear CF
-
-
-
-#### 算法原理
-
-==梯度下降线性协同过滤== (GDLinearCF) 是一种**融合协同过滤与线性回归的混合推荐模型**。其核心假设是：**用户对目标物品的评分可以由相似物品评分、用户统计特征和物品统计特征的线性组合准确预测**。与传统协同过滤不同，该方法通过梯度下降全局优化特征权重，实现更精确的个性化推荐。
-
-#### 特征工程与模型架构
-
-1. **相似物品特征**：
-   - 计算物品间余弦相似度矩阵：
-     $$
-     \text{sim}(i,j) = \frac{\sum_{u \in U_{ij}} R_{u,i} \cdot R_{u,j}}{\|R_i\| \cdot \|R_j\|}
-     $$
-   - 为每个目标物品选择Top-K个最相似物品作为特征物品
-
-2. **统计特征增强**：
-   - 用户平均分 $\mu_u$：反应用户评分习惯
-   - 物品平均分 $\mu_i$：反映物品受欢迎程度
-   - 全局平均分 $\mu_g$：提供基准参考
-
-3. **线性回归模型**：
-   $$
-   \hat{R}_{u,i} = w_1 \cdot R_{u,j_1} + \cdots + w_k \cdot R_{u,j_k} + w_{k+1} \cdot \mu_u + w_{k+2} \cdot \mu_i + w_{k+3} \cdot \mu_g + b
-   $$
-   其中$j_1$到$j_k$是目标物品$i$的Top-K相似物品
-
-#### 优化策略
-1. **带正则化的梯度下降**：
-   - 损失函数：均方误差 + L2正则项
-     $$
-     \mathcal{L} = \frac{1}{N}\sum_{(u,i)}(R_{u,i}-\hat{R}_{u,i})^2 + \frac{\lambda}{2}\|w\|^2
-     $$
-   - 自适应学习率：$lr_t = lr_0 \times 0.95^t$（指数衰减）
-   - 梯度裁剪：限制梯度值在[-1,1]范围防止震荡
-
-2. **特征归一化**：
-   - Z-score标准化：$x' = \frac{x - \mu_x}{\sigma_x}$
-   - 标签标准化：$y' = \frac{y - \mu_y}{\sigma_y}$
-   - 预测时逆变换：$\hat{y} = \hat{y}' \times \sigma_y + \mu_y$
-
-#### 算法特性
-| 优势                                                                   | 挑战                                                                                     |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| • 全局优化特征权重<br>• 自适应学习率提升收敛性<br>• 统计特征增强稳定性 | • 相似度矩阵计算复杂度高<br>• 超参数敏感（学习率、正则化系数）<br>• 特征工程依赖领域知识 |
-
-该模型特别适合**需要显式建模特征权重的场景**，通过梯度下降能自动学习不同特征的重要性权重，相比固定权重的邻域方法具有更强的表达能力。
-
-#### 代码实现
-
-#### 相似度矩阵构建
-采用双层循环计算物品间余弦相似度，仅存储正相关关系减少内存占用：
-
-```python
-sim_matrix = defaultdict(dict)
-for i, item_i in enumerate(items):
-    for j in range(i + 1, len(items)):
-        item_j = items[j]
-        common_users = set(item_user[item_i].keys()) & set(item_user[item_j].keys())
-        if not common_users:
-            continue
-        # 提取共同评分向量
-        v1 = np.array([item_user[item_i][u] for u in common_users])
-        v2 = np.array([item_user[item_j][u] for u in common_users])
-        # 计算余弦相似度
-        num = np.dot(v1, v2)
-        denom = np.linalg.norm(v1) * np.linalg.norm(v2)
-        sim = num / denom if denom != 0 else 0
-        if sim > 0:  # 仅保留正相关
-            sim_matrix[item_i][item_j] = sim
-            sim_matrix[item_j][item_i] = sim
-```
-
-#### 特征工程引擎
-构建包含三类特征的特征向量：
-1. 用户对Top-K相似物品的评分（缺失时用物品平均分填充）
-2. 用户平均分
-3. 物品平均分
-4. 全局平均分
-
-```python
-X, y = [], []
-for user, items in self.user_ratings.items():
-    user_mean = np.mean(list(items.values())) if items else self.global_mean
-    for target_item, target_score in items.items():
-        topk_items = self.topk_dict.get(target_item, [])
-        features = []
-        # 1. 相似物品特征
-        for sim_item in topk_items:
-            features.append(items.get(sim_item, self.item_mean.get(sim_item, self.global_mean)))
-        # 不足K个时用全局均值填充
-        if len(features) < self.topk:
-            features += [self.global_mean] * (self.topk - len(features))
-        # 2. 统计特征增强
-        features.append(user_mean)
-        features.append(self.item_mean.get(target_item, self.global_mean))
-        features.append(self.global_mean)
-        X.append(features)
-        y.append(target_score)
-```
-
-#### 梯度下降优化器
-实现带L2正则化和学习率衰减的梯度下降：
-
-```python
-w = np.random.randn(n_features) * 0.01  # 小随机初始化
-b = 0
-max_grad = 1.0  # 梯度裁剪阈值
-
-for epoch in range(self.epochs):
-    current_lr = self.lr * (0.95**epoch)  # 指数衰减学习率
-    y_pred = X @ w + b  # 前向传播
-    error = y_pred - y  # 计算误差
-    
-    # 反向传播（带梯度裁剪）
-    grad_w = np.clip((X.T @ error) / n_samples, -max_grad, max_grad)
-    grad_b = np.clip(np.mean(error), -max_grad, max_grad)
-    
-    # L2正则化
-    grad_w += self.reg_lambda * w
-    
-    # 参数更新
-    w -= current_lr * grad_w
-    b -= current_lr * grad_b
-
-self.w, self.b = w, b  # 存储训练参数
-```
-
-#### 预测与冷启动
-预测时复用相同的特征工程流程，逆标准化后约束值域：
-
-```python
-features = (features - self.X_mean) / self.X_std  # 特征标准化
-pred = features @ self.w + self.b  # 线性预测
-pred = pred * self.y_std + self.y_mean  # 标签逆标准化
-return max(0, min(100, pred))  # 值域约束[0,100]
-```
-
-冷启动处理：
-1. 物品未训练 → 用户平均分（存在时）或全局平均分
-2. 用户无记录 → 直接返回全局平均分
-
----
 
