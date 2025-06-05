@@ -12,6 +12,7 @@ from algorithm.LeastSquaresCF import LeastSquaresCF
 from algorithm.TopKNanCF import TopKNanCF
 from algorithm.GDLinearCF import GDLinearCF
 import sys
+import gc
 
 
 def get_display_width(text):
@@ -79,7 +80,9 @@ def train_test_split_per_user(user_item_score, test_size=0.2, seed=42):
 
 def run_itemcf_predict(model, test_file, output_file):
     current_user = None
-    predictions = []
+    user_predictions = defaultdict(list)
+    
+    # 读取测试文件并收集预测结果
     with open(test_file, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -93,10 +96,16 @@ def run_itemcf_predict(model, test_file, output_file):
                 if len(parts) >= 1:
                     item_id = int(parts[0])
                     predicted_rating = model.predict(current_user, item_id)
-                    predictions.append((current_user, item_id, predicted_rating))
+                    user_predictions[current_user].append((item_id, predicted_rating))
+    
+    # 按用户分组写入输出文件
     with open(output_file, "w", encoding="utf-8") as f:
-        for user_id, item_id, pred_rating in predictions:
-            f.write(f"{user_id}\t{item_id}\t{pred_rating:.2f}\n")
+        for user_id, predictions in user_predictions.items():
+            # 写入用户ID和预测数量
+            f.write(f"{user_id}|{len(predictions)}\n")
+            # 写入该用户的所有预测结果
+            for item_id, pred_rating in predictions:
+                f.write(f"{item_id}  {int(round(pred_rating))}\n")
 
 
 def cross_validate_and_predict(
@@ -157,82 +166,85 @@ def cross_validate_and_predict(
 
 
 def run_model(model, model_name, train_file, val_file, test_file, output_dir):
+    """运行单个模型"""
     print_section_title(f"{model_name} 模型训练与评估")
-    print(f"[1/3] 开始训练{model_name}模型...")
-    process = psutil.Process(os.getpid())
+    
+    # 清理内存
+    gc.collect()
+    
+    # 预热
+    print("[0/3] 预热系统...")
+    _ = read_data_to_dict(train_file)
+    gc.collect()
+    
+    # 训练模型
+    print("[1/3] 开始训练{}模型...".format(model_name))
     start_time = time.time()
-    start_memory = process.memory_info().rss if process else 0
+    
+    # 获取初始内存使用
+    process = psutil.Process()
+    start_memory = process.memory_info().rss / (1024 * 1024)  # 转换为MB
     
     # 读取训练数据
-    train_dict = read_data_to_dict(train_file)
-    model.fit_from_dict(train_dict)
+    train_data = read_data_to_dict(train_file)
+    gc.collect()  # 清理读取数据后的内存
+    
+    # 训练模型
+    model.fit_from_dict(train_data)
+    
+    # 获取结束内存使用
+    end_memory = process.memory_info().rss / (1024 * 1024)  # 转换为MB
+    memory_used = max(0, end_memory - start_memory)  # 确保内存使用不为负
     
     time_used = time.time() - start_time
-    end_memory = process.memory_info().rss if process else 0
-    memory_used = (end_memory - start_memory) / (1024**2)
-    print(f"✓ {model_name}模型训练完成！")
-    print(f"├─ 耗时: {time_used:.2f} 秒")
-    print(f"└─ 内存消耗: {memory_used:.2f} MB")
+    print("✓ {}模型训练完成！".format(model_name))
+    print("├─ 耗时: {:.2f} 秒".format(time_used))
+    print("└─ 内存消耗: {:.2f} MB".format(memory_used))
 
-    print(f"\n[2/3] 在验证集上评估{model_name}模型性能...")
-    eval_start_time = time.time()
-    eval_start_memory = process.memory_info().rss if process else 0
-    
-    # 读取验证数据
-    val_dict = read_data_to_dict(val_file)
-    mae, rmse = model.evaluate_from_dict(val_dict)
-    
-    eval_time = time.time() - eval_start_time
-    eval_end_memory = process.memory_info().rss if process else 0
-    eval_memory = (eval_end_memory - eval_start_memory) / (1024**2)
+    # 在验证集上评估
+    print("\n[2/3] 在验证集上评估{}模型性能...".format(model_name))
+    mae, rmse = model.evaluate_from_dict(read_data_to_dict(val_file))
     print("验证集评估结果：")
-    print(f"├─ MAE (平均绝对误差): {mae:.2f}")
-    print(f"├─ RMSE (均方根误差): {rmse:.2f}")
-    print(f"├─ 评估耗时: {eval_time:.2f} 秒")
-    print(f"└─ 评估内存消耗: {eval_memory:.2f} MB")
+    print("├─ MAE (平均绝对误差): {:.2f}".format(mae))
+    print("└─ RMSE (均方根误差): {:.2f}".format(rmse))
 
-    print(f"\n[3/3] 开始使用{model_name}预测测试集中的评分...")
-    predict_start_time = time.time()
-    predict_start_memory = process.memory_info().rss if process else 0
-    predictions = []
+    # 预测测试集
+    print("\n[3/3] 开始使用{}预测测试集中的评分...".format(model_name))
+    
+    # 读取测试文件并收集预测结果
+    current_user = None
+    user_predictions = defaultdict(list)
+    
+    with open(test_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if "|" in line:
+                current_user, _ = line.split("|")
+                current_user = int(current_user)
+            else:
+                parts = line.split()
+                if len(parts) >= 1:
+                    item_id = int(parts[0])
+                    predicted_rating = model.predict(current_user, item_id)
+                    user_predictions[current_user].append((item_id, predicted_rating))
 
-    try:
-        with open(test_file, "r", encoding="utf-8") as f:
-            current_user = None
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                if "|" in line:
-                    current_user, _ = line.split("|")
-                    current_user = int(current_user)
-                else:
-                    parts = line.split()
-                    if len(parts) >= 1:
-                        item_id = int(parts[0])
-                        predicted_rating = model.predict(current_user, item_id)
-                        predictions.append((current_user, item_id, predicted_rating))
-
-        output_file = os.path.join(output_dir, f"{model_name.lower()}_output.txt")
-        with open(output_file, "w", encoding="utf-8") as f:
-            for user_id, item_id, pred_rating in predictions:
-                f.write(f"{user_id}\t{item_id}\t{pred_rating:.2f}\n")
-
-        predict_time = time.time() - predict_start_time
-        predict_end_memory = process.memory_info().rss if process else 0
-        predict_memory = (predict_end_memory - predict_start_memory) / (1024**2)
-        total_memory = (predict_end_memory - start_memory) / (1024**2)
-
-        print(f"✓ {model_name}预测完成！")
-        print(f"├─ 预测耗时: {predict_time:.2f} 秒")
-        print(f"├─ 预测内存消耗: {predict_memory:.2f} MB")
-        print(f"├─ 总内存消耗: {total_memory:.2f} MB")
-        print(f"└─ 预测结果已保存到：{output_file}\n")
-
-    except Exception as e:
-        print(f"\n❌ 处理文件时发生错误：{str(e)}")
-        print(f"├─ 当前处理的行：{line}")
-        print(f"└─ 当前用户：{current_user}")
+    # 写入输出文件
+    output_file = os.path.join(output_dir, f"{model_name.lower()}_output.txt")
+    with open(output_file, "w", encoding="utf-8") as f:
+        for user_id, predictions in user_predictions.items():
+            # 写入用户ID和预测数量
+            f.write(f"{user_id}|{len(predictions)}\n")
+            # 写入该用户的所有预测结果
+            for item_id, pred_rating in predictions:
+                f.write(f"{item_id}  {int(round(pred_rating))}\n")
+    
+    print("✓ {}预测完成！".format(model_name))
+    print("└─ 预测结果已保存到：{}".format(output_file))
+    
+    # 清理内存
+    gc.collect()
 
 
 def run_basic_models():
@@ -261,30 +273,42 @@ def run_basic_models():
     # 运行UserCF模型 
     user_cf_model = UserCF(n_neighbors, min_similarity, similarity_method)
     run_model(user_cf_model, "UserCF", train_file, val_file, test_file, output_dir)
+    time.sleep(2)  # 添加间隔
+    gc.collect()  # 清理内存
     
     # 运行ItemCF模型 
     item_cf_model = ItemCF(n_neighbors, min_similarity, similarity_method)
     run_model(item_cf_model, "ItemCF", train_file, val_file, test_file, output_dir)
-
-    # 运行GraphCF模型
-    # graph_cf_model = GraphCF()
-    # run_model(graph_cf_model, "GraphCF", train_file, val_file, test_file, output_dir)
+    time.sleep(2)  # 添加间隔
+    gc.collect()  # 清理内存
     
     # 运行SlopeOne模型
     slope_one_model = SlopeOne()
     run_model(slope_one_model, "SlopeOne", train_file, val_file, test_file, output_dir)
+    time.sleep(2)  # 添加间隔
+    gc.collect()  # 清理内存
     
-    # 运行LeastSquaresCF模型
-    least_squares_model = LeastSquaresCF()
-    run_model(least_squares_model, "LeastSquaresCF", train_file, val_file, test_file, output_dir)
+    # 运行GraphCF模型
+    graph_cf_model = GraphCF()
+    run_model(graph_cf_model, "GraphCF", train_file, val_file, test_file, output_dir)
+    time.sleep(2)  # 添加间隔
+    gc.collect()  # 清理内存
     
     # 运行TopKNanCF模型
-    # topk_nan_model = TopKNanCF()
-    # run_model(topk_nan_model, "TopKNanCF", train_file, val_file, test_file, output_dir)
+    topk_nan_model = TopKNanCF()
+    run_model(topk_nan_model, "TopKNanCF", train_file, val_file, test_file, output_dir)
+    time.sleep(2)  # 添加间隔
+    gc.collect()  # 清理内存
     
     # 运行GDLinearCF模型
     gd_linear_model = GDLinearCF()
     run_model(gd_linear_model, "GDLinearCF", train_file, val_file, test_file, output_dir)
+    time.sleep(2)  # 添加间隔
+    gc.collect()  # 清理内存
+    
+    # 运行LeastSquaresCF模型
+    least_squares_model = LeastSquaresCF()
+    run_model(least_squares_model, "LeastSquaresCF", train_file, val_file, test_file, output_dir)
     
     print_section_title("基础模式运行完成")
     print(" 所有模型运行完成！预测结果已保存在output目录下。")

@@ -74,10 +74,6 @@
 
 
 
-## 实验原理
-
-**协同过滤推荐**（Collaborative Filtering recommendation）是在信息过滤和信息系统中正迅速成为一项很受欢迎的技术。与传统的基于内容过滤直接分析内容进行 推荐不同，协同过滤分析用户兴趣，在用户群中找到指定用户的相似（兴趣）用户，**综合这些相似用户对某一信息的评价，形成系统对该指定用户对此信息的喜好程度预测。协同过滤算法主要分为基于启发式和基于模型式两种。 其中，**基于启发式的协同过滤算法，又可以分为基于用户的协同过滤算法 （User-Based）和基于项目的协同过滤算法（Item-Based）。
-
 
 
 ## 数据集说明
@@ -131,6 +127,26 @@
 <img src="images/distribution_pie_charts.png" alt="物品分布情况" style="zoom:200%;" />
 
  上述饼图直观展示了训练集与测试集在物品和用户分布上的差异：左图显示，约62.8%的物品仅出现在训练集，30.6%的物品为训练集和测试集共有，仅有6.7%的物品为测试集独有，说明测试集存在比例为17.88%的冷启动物品；右图则表明，绝大多数用户（98.03%）在训练集和测试集中均有出现，只有极少数用户为测试集独有，用户冷启动问题并不突出。整体来看，**推荐系统在物品维度面临更为显著的冷启动挑战，而用户维度的数据分布则较为充分。**
+
+
+
+## 其他说明
+
+
+
+### 通用技术规范
+
+后续算法实现遵循统一技术标准，建立"复用"标记体系，形成技术继承关系，进而增强实验的连贯性：
+1. **相似度计算**：默认使用皮尔逊相关系数
+2. **冷启动处理**：新用户/新物品返回全局平均分
+3. **评估指标**：采用MAE和RMSE双指标
+4. **矩阵存储**：使用稀疏矩阵格式CSR
+
+
+
+### 小组分工
+
+
 
 
 
@@ -290,7 +306,7 @@ Item-Based协同过滤（Item-Based CF）的核心假设是**相似物品可能�
 
 #### 算法原理
 
-物品相似性度量聚焦于共同评分用户的偏好一致性，主要方法和user_CF相同，分为**余弦相似度**，直接计算物品评分向量的夹角余弦；**皮尔逊相关系数**，消除用户评分偏差，将评分中心化处理。相似度计算后形成物品相似度矩阵，用于后续邻居选择。
+物品相似性度量聚焦于共同评分用户的偏好一致性，计算复用4.1.1节的通用方法，分为**余弦相似度**，直接计算物品评分向量的夹角余弦；**皮尔逊相关系数**，消除用户评分偏差，将评分中心化处理。相似度计算后形成物品相似度矩阵，用于后续邻居选择。
 
 预测用户𝑢对目标物品𝑖的评分时，执行两个步骤：1.**相似物品筛选**：从物品相似度矩阵中提取与𝑖最相似的𝑘个物品（阈值过滤后），构成邻居集合𝑁(𝑖)；2.**加权评分聚合**：基于用户𝑢对𝑁(𝑖)中物品的历史评分，计算加权预测值：
 $$
@@ -437,328 +453,6 @@ Slope One算法的实现过程相对简单直观，主要分为两个阶段：�
         return est
 ```
 
- 
-
-
-
-
-
-## 矩阵分解模型
-
-
-
-### SVD
-
-SVD（奇异值分解）算法是一种**矩阵分解技术**，通过将用户-物品评分矩阵分解为低维的用户特征向量和物品特征向量的乘积，来预测缺失评分并捕捉潜在偏好关系。
-
-#### 算法原理
-
- 其核心是将原始评分矩阵 𝑅 （维度 𝑚×𝑛 ，其中 𝑚 为用户数，𝑛 为物品数）分解为两个低维矩阵的乘积：用户特征矩阵 𝑃 （维度 𝑚×𝐾 ) 和物品特征矩阵 𝑄 （维度 𝑛×𝐾 ) ，即 𝑅≈𝑃𝑄𝑇 。这里的 𝐾\*K\* 是潜在特征维度（𝐾≪min⁡(𝑚,𝑛) ），用于降维和捕捉用户与物品的隐含特征（如用户偏好、物品特性）。
-
-==**损失函数**== 在传统的SVD矩阵分解方法中，算法的核心目标是通过最小化预测评分与实际评分之间的平方误差来学习用户和商品的潜在特征向量。具体而言，SVD算法的损失函数可以表示为：
-$$
-L = Σ(u,i)∈R (r_ui - p_u^T q_i)^2 + λ(||p_u||^2 + ||q_i||^2)
-$$
-
-这个损失函数的第一项代表了预测误差的平方和，其中`r_ui`是用户u对商品i的实际评分，`p_u^T q_i`是通过矩阵分解得到的预测评分。第二项是L2正则化项，通过引入正则化参数λ来控制模型复杂度，防止过拟合现象的发生。正则化项的作用在于约束用户特征向量`p_u`和商品特征向量`q_i`的范数，使得模型能够更好地泛化到未见过的数据上。
-
-<img src="https://www.mdpi.com/information/information-11-00369/article_deploy/html/images/information-11-00369-g001.png" alt="Information 11 00369 g001" style="zoom: 250%;" />
-
-然而，实际应用中，损失函数常扩展为包含偏差项，以更好地建模评分偏置：
-$$
-L = \sum_{(u,i) \in R} \left( r_{ui} - \mu - b_u - b_i - p_u^T q_i \right)^2 + \lambda \left( \|p_u\|^2 + \|q_i\|^2 + b_u^2 + b_i^2 \right)
-$$
-
-- 其中 𝜇 是全局平均评分，𝑏𝑢 是用户偏差（表示用户评分习惯），𝑏𝑖 是物品偏差（表示物品受欢迎程度）。这能更准确地捕捉评分中的系统性偏置。**
-
-
-
-==**正则化SVD引入**== 在稀疏数据条件下，观测到的评分集合 R相对较小，容易导致传统SVD模型出现过拟合。为了解决这一问题，需要在损失函数中引入正则化项，使模型在拟合训练数据的同时保持适当的复杂度。基于此思路，正则化SVD（RSVD）的完整目标函数可以写成：
-$$
-\min_{p_u, q_i} \sum_{(u,i) \in R} \left( r_{ui} - \sum_{k=1}^{K} p_{u,k} q_{k,i} \right)^2 + \frac{\lambda}{2} \sum_{u} \| p_u \|^2 + \frac{\lambda}{2} \sum_{i} \| q_i \|^2
-$$
-
-- 其中 λ>0  是正则化参数，用于平衡模型拟合程度与复杂度。
-
-- 通过加上 $\frac{\lambda}{2} \sum_{u} \| p_u \|^2 + \frac{\lambda}{2} \sum_{i} \| q_i \|^2$ ，RSVD 在保证拟合效果的同时，降低了参数过大导致的过拟合风险。
-
-==**优化方法**== 对于上述目标函数，常见的求解方法包括：**迭代最小二乘（ALS）**：交替固定 {pu} 或{qi} 进行优化，直至收敛。虽然原理清晰，但对于大规模数据集而言，实现较为繁琐、效率不够高。**随机梯度下降（SGD）**：针对每个训练样本 (u,i) ，计算预测误差  ，然后沿梯度反方向更新参数。
-
-#### 代码实现
-
-SVD算法是推荐系统中最著名的矩阵分解方法，在Netflix Prize竞赛中由Simon Funk推广而闻名。该算法的核心预测公式基于用户和物品的偏置以及潜在因子的内积计算。当不使用偏置时，算法等价于概率矩阵分解方法。
-
-```python
-class SVD(AlgoBase):
-
-    def __init__(self, n_factors=100, n_epochs=20, biased=True, init_mean=0,
-                 init_std_dev=.1, lr_all=.005,
-                 reg_all=.02, lr_bu=None, lr_bi=None, lr_pu=None, lr_qi=None,
-                 reg_bu=None, reg_bi=None, reg_pu=None, reg_qi=None,
-                 random_state=None, verbose=False):
-
-        self.n_factors = n_factors
-        self.n_epochs = n_epochs
-        self.biased = biased
-        self.init_mean = init_mean
-        self.init_std_dev = init_std_dev
-        self.lr_bu = lr_bu if lr_bu is not None else lr_all
-        self.lr_bi = lr_bi if lr_bi is not None else lr_all
-        self.lr_pu = lr_pu if lr_pu is not None else lr_all
-        self.lr_qi = lr_qi if lr_qi is not None else lr_all
-        self.reg_bu = reg_bu if reg_bu is not None else reg_all
-        self.reg_bi = reg_bi if reg_bi is not None else reg_all
-        self.reg_pu = reg_pu if reg_pu is not None else reg_all
-        self.reg_qi = reg_qi if reg_qi is not None else reg_all
-        self.random_state = random_state
-        self.verbose = verbose
-
-        AlgoBase.__init__(self)
-```
-
-在代码实现中，算法通过随机梯度下降(SGD)来最小化正则化平方误差。关键的参数配置包括n_factors用于设定潜在因子数量（默认100），n_epochs控制SGD迭代次数（默认20次）。算法支持biased参数来决定是否使用偏置项，当设为False时可获得无偏版本。
-
-```python
-    def fit(self, trainset):
-
-        AlgoBase.fit(self, trainset)
-        self.sgd(trainset)
-
-        return self
-```
-
-用户和物品因子的初始化遵循正态分布，可通过init_mean和init_std_dev参数调节均值和标准差。学习率控制通过lr_all统一设置（默认0.005），或者分别为不同参数类型设置lr_bu、lr_bi、lr_pu、lr_qi。正则化参数同样支持统一设置reg_all（默认0.02）或分别配置。
-
-训练完成后，算法会生成四个重要属性：pu表示用户因子矩阵（n_users × n_factors），qi表示物品因子矩阵（n_items × n_factors），bu和bi分别表示用户和物品偏置向量。
-
-```python
-    def estimate(self, u, i):
-        # Should we cythonize this as well?
-
-        known_user = self.trainset.knows_user(u)
-        known_item = self.trainset.knows_item(i)
-
-        if self.biased:
-            est = self.trainset.global_mean
-
-            if known_user:
-                est += self.bu[u]
-
-            if known_item:
-                est += self.bi[i]
-
-            if known_user and known_item:
-                est += np.dot(self.qi[i], self.pu[u])
-
-        else:
-            if known_user and known_item:
-                est = np.dot(self.qi[i], self.pu[u])
-            else:
-                raise PredictionImpossible('User and item are unknown.')
-
-        return est
-```
-
-
-
-### SVD++
-
-然而，传统的SVD方法存在一个显著的局限性，即它仅仅考虑了显式的评分信息，而忽略了用户在系统中产生的大量隐式反馈信息。在实际的推荐系统应用场景中，用户的隐式行为数据（如商品浏览记录、购买历史、点击行为等）往往比显式评分更加丰富和容易获取。基于这一观察，SVD++算法应运而生，它在传统SVD的基础上融合了隐式反馈信息，从而能够更全面地建模用户的偏好模式。
-
-#### 算法原理
-
-==**预测评分公式**== SVD++算法的核心创新在于将用户的隐式反馈信息整合到评分预测模型中。该算法认为，即使用户没有对某个商品给出明确的评分，但用户与该商品的交互行为仍然能够反映用户的潜在兴趣。基于这一思想，SVD++算法重新定义了评分预测公式：
-
-$$
-\hat{r}_{ui} = \mu + b_u + b_i + \left( p_u + |I_u|^{-1/2} \sum_{j \in I_u} y_j \right)^T q_i
-$$
-
-在这个公式中，预测评分不再仅仅依赖于用户和商品的基本特征向量，而是引入了多个重要的改进元素。首先，`μ`代表了整个系统的全局平均评分，它反映了所有用户对所有商品的整体评价趋势。其次，`b_u`和`b_i`分别表示用户u和商品i的偏置项，这些偏置项能够捕捉个体用户和商品相对于全局平均水平的系统性偏差。 
-
-更为重要的是，SVD++算法在用户特征向量`p_u`的基础上增加了隐式反馈项`|I_u|^(-1/2) Σ(j∈I_u) y_j`。这里，`I_u`表示用户u有过交互行为的商品集合，`y_j`是商品j对应的隐式反馈因子向量，而`|I_u|^(-1/2)`是归一化因子，用于消除不同用户交互商品数量差异带来的影响。这种设计使得算法能够从用户的历史行为模式中推断出用户的潜在偏好，即使这些偏好没有通过显式评分表达出来。
-
-==**损失函数与正则化**== 为了学习上述模型中的所有参数，需要在损失函数中同时对显式与隐式部分进行约束。完整的目标函数可以表示为：
-$$
-\begin{aligned}
-L \;=\; &\sum_{(u,i)\in R}\left[r_{ui} \;-\; \mu \;-\; b_u \;-\; b_i \;-\;\Bigl(p_u + |I_u|^{-\frac{1}{2}} \sum_{j\in I_u} y_j\Bigr)^{\T!}\,q_i\right]^2 \\
-&\;+\;\lambda\left(\|p_u\|^2 + \|q_i\|^2 + \|y_j\|^2 + b_u^2 + b_i^2\right)
-\end{aligned}
-$$
-
-- 第一项为预测误差的平方和，涵盖了显式评分与融合了隐式反馈后的预测值之差。
-
-- 第二项为正则化项，对显式特征向量 pu,  qi、隐式反馈因子 yj 以及偏置 bu, bi 一并加以约束，防止模型过拟合。
-
-==**随机梯度下降**==  SVD++ 通常采用随机梯度下降（SGD）来优化上述损失函数。对于每一条训练样本 (u,i)(u,i)(u,i)，首先计算预测误差：
-$$
-e_{ui} = r_{ui} - \hat{r}_{ui} = r_{ui} - \Bigl[\mu + b_u + b_i + \Bigl(p_u + |I_u|^{-\frac{1}{2}} \sum_{j \in I_u} y_j\Bigr)^T q_i\Bigr].
-$$
-然后，根据梯度信息更新各项参数。随机梯度更新方式保证了在大规模数据集上具有较高的计算效率，同时能够有效避免陷入局部最优。
-
-相比于传统SVD（或RSVD）只针对评分矩阵进行分解，**SVD++ 由于要处理额外的隐式反馈信息，因此计算量有所增加**，但这部分开销是合理且必要的：在实际推荐场景中，隐式反馈极大地提升了模型的预测精度和推荐质量，尤其在数据稀疏、长尾物品较多的情况下优势更加明显。
-
-
-
-####  代码实现
-
-SVD++算法是SVD的扩展版本，其创新之处在于考虑了隐式评分信息。该算法引入了新的物品因子yj来捕获隐式评分，即用户对物品进行评分这一行为本身，而不考虑具体评分值。
-
-```python
-class SVDpp(AlgoBase):
-
-    def __init__(self, n_factors=20, n_epochs=20, init_mean=0, init_std_dev=.1,
-                 lr_all=.007, reg_all=.02, lr_bu=None, lr_bi=None, lr_pu=None,
-                 lr_qi=None, lr_yj=None, reg_bu=None, reg_bi=None, reg_pu=None,
-                 reg_qi=None, reg_yj=None, random_state=None, verbose=False,
-                 cache_ratings=False):
-
-        self.n_factors = n_factors
-        self.n_epochs = n_epochs
-        self.init_mean = init_mean
-        self.init_std_dev = init_std_dev
-        self.lr_bu = lr_bu if lr_bu is not None else lr_all
-        self.lr_bi = lr_bi if lr_bi is not None else lr_all
-        self.lr_pu = lr_pu if lr_pu is not None else lr_all
-        self.lr_qi = lr_qi if lr_qi is not None else lr_all
-        self.lr_yj = lr_yj if lr_yj is not None else lr_all
-        self.reg_bu = reg_bu if reg_bu is not None else reg_all
-        self.reg_bi = reg_bi if reg_bi is not None else reg_all
-        self.reg_pu = reg_pu if reg_pu is not None else reg_all
-        self.reg_qi = reg_qi if reg_qi is not None else reg_all
-        self.reg_yj = reg_yj if reg_yj is not None else reg_all
-        self.random_state = random_state
-        self.verbose = verbose
-        self.cache_ratings = cache_ratings
-
-        AlgoBase.__init__(self)
-```
-
-在代码参数配置上，SVD++的n_factors默认值调整为20，学习率lr_all默认设为0.007。算法新增了cache_ratings参数来决定是否在训练时缓存评分数据，这能加速训练但会增加内存占用。与SVD相比，SVD++增加了lr_yj和reg_yj参数来控制隐式因子的学习率和正则化。
-
-训练后的模型会额外生成yj属性，表示隐式物品因子矩阵（n_items × n_factors），这与显式的qi因子矩阵配合使用，提升了预测准确性。
-
-```python
-    def estimate(self, u, i):
-
-        est = self.trainset.global_mean
-
-        if self.trainset.knows_user(u):
-            est += self.bu[u]
-
-        if self.trainset.knows_item(i):
-            est += self.bi[i]
-
-        if self.trainset.knows_user(u) and self.trainset.knows_item(i):
-            Iu = len(self.trainset.ur[u])  # nb of items rated by u
-            u_impl_feedback = (sum(self.yj[j] for (j, _)
-                               in self.trainset.ur[u]) / np.sqrt(Iu))
-            est += np.dot(self.qi[i], self.pu[u] + u_impl_feedback)
-
-        return est
-```
-
-
-
-### NMF
-
-非负矩阵分解（Non-Negative Matrix Factorization, NMF）是一种重要的数据分析技术，其核心思想是将大规模数据集分解为更小且具有实际意义的组成部分，同时确保所有数值保持非负性。这种约束条件使得NMF在提取数据中有用特征方面表现出色，并且大大简化了数据的分析和处理过程。与传统的矩阵分解方法相比，NMF的非负性约束更符合许多实际应用场景的物理意义，例如在图像处理中像素值不能为负，在文本分析中词频不能为负等情况。
-
-#### 算法原理
-
-==**矩阵分解**== 对于一个维度为m × n的矩阵A，其中每个元素都大于等于0，NMF算法将其分解为两个矩阵W和H，这两个矩阵的维度分别为m × k和k × n，且两个矩阵都只包含非负元素。这种分解关系可以用数学公式表示为：
-$$
-A \approx W H, \quad W \in \mathbb{R}_{\geq 0}^{m \times k}, \, H \in \mathbb{R}_{\geq 0}^{k \times n}, \quad k \leq \min(m, n).
-$$
-这里，k 称为分解秩，通常取值远小于 min⁡(m,n) ，以实现降维和去噪的效果。矩阵 W 的每一列可以看作若干“基础模式”或“特征向量”，这些向量共同组成原始数据中存在的潜在结构；而 H 的每一列则记录了对应原始列向量（如某条样本或某个文档）在这些基础模式下的权重。由于两者都仅允许非负元素，因此分解结果可被直观解释为“将原始数据用若干个非负基础部分按加权叠加的方式重构”。
-
-<img src="https://media.geeksforgeeks.org/wp-content/uploads/20210429213042/Intuition1-660x298.png" alt="Lightbox" style="zoom:200%;" />
-
-==**重构误差 **== 要使 W H 尽可能接近 A ，N 通常采用最小化 Frobenius 范数的重构误差：
-$$
-\min_{W \geq 0, H \geq 0} \|A - W H\|_F^2 = \min_{W \geq 0, H \geq 0} \sum_{i=1}^{m} \sum_{j=1}^{n} \left( A_{ij} - [W H]_{ij} \right)^2,
-$$
-并要求 Wiℓ≥0,  Hℓj≥0 。由于这个优化问题是非凸的，通常只能找到局部最优解。在实际求解过程中，首先需要为 W 和 H 赋予非负的初始值，常见做法包括从均匀分布或正态分布（取绝对值）中采样，或者基于截断 SVD 等启发式方法进行初始化。良好的初始化有助于加速收敛并减少陷入较差局部最优的概率。
-
-==**迭代更新**== 随后进入迭代更新阶段，以逐步减少 ∥A−WH∥。这里最经典的优化技术是**乘法更新规则**：
-$$
-W_{il} \leftarrow W_{il} \times \frac{[A H^T]_{il}}{[W H H^T]_{il}},
-H_{\ell j} \leftarrow H_{\ell j} \times \frac{[W^T A]_{\ell j}}{[W^T W H]_{\ell j}}.
-$$
-
-
-每次更新后，W 与 H 都保持非负，并且 ∥A−WH∥在迭代过程中单调不增。通常交替执行若干次上述更新，直至满足如下任一停止条件：重构误差变化幅度低于预设阈值、达到最大迭代次数，或其他用户自定义的收敛标准。
-
-另一个常用的方法是**交替最小二乘法（ALS）**。其思路是固定 H  后，将$\min_{W \geq 0} \|A - W H\|_F^2$     转化为“带非负约束的最小二乘”子问题，通过合适的 NNLS 方法求得最优 W；接着固定新得到的 W ，以同样方式求解$\min_{H \geq 0} \|A - W H\|_F^2$   子问题获得 H ，然后再回到第一步循环。交替迭代直到收敛。ALS 在处理大规模、稀疏数据时往往比乘法更新收敛更快，但需要调用 NNLS 求解器。
-
-==**应用场景**== 从直觉与应用角度来看，NMF 的关键在于“**以非负并且可解释的方式，将复杂数据拆解为若干有意义的部件再加权组合**”。这使得它特别适合的场景为：**人脸图像分解 文本主题建模  音频信号分离**。
-
-正是因为 NMF 保持了“非负”“部分叠加”的直观含义，并能够揭示出数据中隐藏的局部结构，它在图像、文本、音频等多个领域都得到了广泛且有效的应用。
-
- 
-
-
-#### 代码实现
-
-NMF算法基于非负矩阵分解理论，确保所有用户和物品因子保持非负值。该算法的预测公式与SVD相似，但通过特殊的梯度下降步长选择来维持因子的非负性约束。
-
-```py
-class NMF(AlgoBase):
-
-    def __init__(self, n_factors=15, n_epochs=50, biased=False, reg_pu=.06,
-                 reg_qi=.06, reg_bu=.02, reg_bi=.02, lr_bu=.005, lr_bi=.005,
-                 init_low=0, init_high=1, random_state=None, verbose=False):
-
-        self.n_factors = n_factors
-        self.n_epochs = n_epochs
-        self.biased = biased
-        self.reg_pu = reg_pu
-        self.reg_qi = reg_qi
-        self.lr_bu = lr_bu
-        self.lr_bi = lr_bi
-        self.reg_bu = reg_bu
-        self.reg_bi = reg_bi
-        self.init_low = init_low
-        self.init_high = init_high
-        self.random_state = random_state
-        self.verbose = verbose
-
-        if self.init_low < 0:
-            raise ValueError('init_low should be greater than zero')
-
-        AlgoBase.__init__(self)
-```
-
-在参数设置上，NMF的n_factors默认值较小（15），但n_epochs增加到50次以确保充分收敛。算法默认不使用偏置（biased=False），但可以启用偏置版本来提高准确性，尽管这可能增加过拟合风险。
-
-NMF的关键配置包括reg_pu和reg_qi（默认0.06）来控制用户和物品因子的正则化，以及init_low和init_high（默认0到1）来设置因子初始化范围。由于算法对初始值高度敏感，这两个参数的调节需要格外谨慎。
-
-```python
-    def estimate(self, u, i):
-        # Should we cythonize this as well?
-        known_user = self.trainset.knows_user(u)
-        known_item = self.trainset.knows_item(i)
-
-        if self.biased:
-            est = self.trainset.global_mean
-            if known_user:
-                est += self.bu[u]
-            if known_item:
-                est += self.bi[i]
-            if known_user and known_item:
-                est += np.dot(self.qi[i], self.pu[u])
-
-        else:
-            if known_user and known_item:
-                est = np.dot(self.qi[i], self.pu[u])
-            else:
-                raise PredictionImpossible('User and item are unknown.')
-
-        return est
-```
-
-这三种算法都支持random_state参数来控制随机数生成，确保结果的可重现性，并提供verbose参数来显示训练进度。在实际应用中，开发者需要根据具体数据特征和性能要求来选择合适的算法和参数配置，以获得最佳的推荐效果。
-
-
 
 ## 图模型与集成方法
 
@@ -799,6 +493,8 @@ $$
 $$
 
 - 其中 μ𝑢 是用户 𝑢  的平均评分，σ𝑢 是用户 𝑢 的评分标准差， μ𝑖 是物品 𝑖  的平均评分， μ*global*  是全局平均评分。在代码中，系数 𝛽  取0.7，𝛾取0.3。最后，将预测评分限制在评分范围内（如0到100）。
+
+==**冷启动处理**==：复用4.1.1节的全局平均分策略
 
 基于图的协同过滤能够捕捉**用户和物品之间的高阶关系（通过多步游走）**，而传统的协同过滤（如基于邻域的方法）通常只考虑直接邻居。该方法对稀疏数据有较好的鲁棒性，因为随机游走能够通过多次跳转探索更广泛的连接。需要注意的是，该算法的计算复杂度主要在于转移概率矩阵的构建和随机游走的迭代，当用户和物品数量很大时，矩阵可能非常大，**迭代计算会消耗较多内存和时间**。
 
@@ -960,9 +656,7 @@ GDLinearCF的核心思想是**利用目标物品的相似物品评分作为特�
 
 ==**相似度计算**== 同样采用**余弦相似度**衡量物品间的相似性，每个物品仅保留相似度最高的K个邻居，形成相似物品字典 `topk_dict`。这种设计确保了计算效率，同时聚焦于最相关的物品关联。
 
-==**特征工程**== 这是模型的核心创新点。对于每个用户-物品评分记录 (u,i) ，算法构建多维特征向量：1. **相似物品评分特征**：用户对目标物品的Top-K相似物品的评分（如K=10）2. **用户偏好特征**：用户的历史平均评分  3. **物品特性特征**：目标物品的平均评分  4. **全局基准特征**：整个数据集的平均评分
-
-特征向量 $X \in \mathbb{R}^{K+3}$      的设计巧妙融合了用户偏好、物品特性和群体共识三个维度的信息。对于缺失的相似物品评分，算法采用物品平均分或全局平均分进行智能填充，确保特征完整性。
+==**特征工程**== 复用以下特征处理方法：缺失值填充：`物品平均分 → 全局平均分`；特征标准化：`(x - μ)/σ`
 
 ==**模型训练**== 使用带L2正则化的线性回归模型：
 $$
@@ -1112,7 +806,7 @@ $$
 $$
 - $U_i$ 表示对目标物品 $i$ 有评分的用户集合，$w$ 是待优化的权重向量。
 
-==**缺失值处理机制**== 面对真实场景中用户可能未对所有特征物品评分的情况，算法同样采用全局平均分$R_{\text{global}}$进行合理填补。
+==**缺失值处理机制**== 缺失值处理复用7.1.1节的全局平均分填充策略。  
 
 ==**评分预测**== 预测用户𝑢对物品𝑖的评分时，算法执行两阶段计算：首先获取用户𝑢对特征物品集$I_k$ 的评分（缺失值用$R_{\text{global}}$ 填充），然后将这些特征评分与训练所得权重$w$进行线性组合：
 $$
@@ -1184,4 +878,362 @@ def predict(self, user_id, item_id):
 这种分层设计确保在各种边界情况下都有合理预测：`item_id not in self.item_weights`处理新物品冷启动，`user_ratings.get(user_id, {})`处理新用户。最后的截断操作维护评分系统的边界一致性。
 
 ==**流式评估与指标计算**== 评估过程采用增量计算方式，仅需存储当前预测误差的累加值，无需缓存整个验证集的预测结果。这种流式处理使内存占用保持恒定，不受验证集规模影响。平方根运算在累加完成后执行一次，避免重复计算开销。
+
+
+
+
+
+
+
+## 矩阵分解模型
+
+
+
+### SVD
+
+SVD（奇异值分解）算法是一种**矩阵分解技术**，通过将用户-物品评分矩阵分解为低维的用户特征向量和物品特征向量的乘积，来预测缺失评分并捕捉潜在偏好关系。
+
+#### 算法原理
+
+ 其核心是将原始评分矩阵 𝑅 （维度 𝑚×𝑛 ，其中 𝑚 为用户数，𝑛 为物品数）分解为两个低维矩阵的乘积：用户特征矩阵 𝑃 （维度 𝑚×𝐾 ) 和物品特征矩阵 𝑄 （维度 𝑛×𝐾 ) ，即 𝑅≈𝑃𝑄𝑇 。这里的 𝐾 是潜在特征维度（𝐾≪min⁡(𝑚,𝑛) ），用于降维和捕捉用户与物品的隐含特征（如用户偏好、物品特性）。
+
+==**损失函数**== 在传统的SVD矩阵分解方法中，算法的核心目标是通过最小化预测评分与实际评分之间的平方误差来学习用户和商品的潜在特征向量。具体而言，SVD算法的损失函数可以表示为：
+$$
+L = Σ(u,i)∈R (r_ui - p_u^T q_i)^2 + λ(||p_u||^2 + ||q_i||^2)
+$$
+
+这个损失函数的第一项代表了预测误差的平方和，其中`r_ui`是用户u对商品i的实际评分，`p_u^T q_i`是通过矩阵分解得到的预测评分。第二项是L2正则化项，通过引入正则化参数λ来控制模型复杂度，防止过拟合现象的发生。正则化项的作用在于约束用户特征向量`p_u`和商品特征向量`q_i`的范数，使得模型能够更好地泛化到未见过的数据上。
+
+<img src="https://www.mdpi.com/information/information-11-00369/article_deploy/html/images/information-11-00369-g001.png" alt="Information 11 00369 g001" style="zoom: 250%;" />
+
+然而，实际应用中，损失函数常扩展为包含偏差项，以更好地建模评分偏置：
+$$
+L = \sum_{(u,i) \in R} \left( r_{ui} - \mu - b_u - b_i - p_u^T q_i \right)^2 + \lambda \left( \|p_u\|^2 + \|q_i\|^2 + b_u^2 + b_i^2 \right)
+$$
+
+- 其中 𝜇 是全局平均评分，𝑏𝑢 是用户偏差（表示用户评分习惯），𝑏𝑖 是物品偏差（表示物品受欢迎程度）。这能更准确地捕捉评分中的系统性偏置。**
+
+
+
+==**正则化SVD引入**== 在稀疏数据条件下，观测到的评分集合 R相对较小，容易导致传统SVD模型出现过拟合。为了解决这一问题，需要在损失函数中引入正则化项，使模型在拟合训练数据的同时保持适当的复杂度。基于此思路，正则化SVD（RSVD）的完整目标函数可以写成：
+$$
+\min_{p_u, q_i} \sum_{(u,i) \in R} \left( r_{ui} - \sum_{k=1}^{K} p_{u,k} q_{k,i} \right)^2 + \frac{\lambda}{2} \sum_{u} \| p_u \|^2 + \frac{\lambda}{2} \sum_{i} \| q_i \|^2
+$$
+
+- 其中 λ>0  是正则化参数，用于平衡模型拟合程度与复杂度。
+
+- 通过加上 $\frac{\lambda}{2} \sum_{u} \| p_u \|^2 + \frac{\lambda}{2} \sum_{i} \| q_i \|^2$ ，RSVD 在保证拟合效果的同时，降低了参数过大导致的过拟合风险。
+
+==**优化方法**== 对于上述目标函数，常见的求解方法包括：**迭代最小二乘（ALS）**：交替固定 {pu} 或{qi} 进行优化，直至收敛。虽然原理清晰，但对于大规模数据集而言，实现较为繁琐、效率不够高。**随机梯度下降（SGD）**：针对每个训练样本 (u,i) ，计算预测误差  ，然后沿梯度反方向更新参数。
+
+#### 代码实现
+
+SVD算法是推荐系统中最著名的矩阵分解方法，在Netflix Prize竞赛中由Simon Funk推广而闻名。该算法的核心预测公式基于用户和物品的偏置以及潜在因子的内积计算。当不使用偏置时，算法等价于概率矩阵分解方法。
+
+```python
+class SVD(AlgoBase):
+
+    def __init__(self, n_factors=100, n_epochs=20, biased=True, init_mean=0,
+                 init_std_dev=.1, lr_all=.005,
+                 reg_all=.02, lr_bu=None, lr_bi=None, lr_pu=None, lr_qi=None,
+                 reg_bu=None, reg_bi=None, reg_pu=None, reg_qi=None,
+                 random_state=None, verbose=False):
+
+        self.n_factors = n_factors
+        self.n_epochs = n_epochs
+        self.biased = biased
+        self.init_mean = init_mean
+        self.init_std_dev = init_std_dev
+        self.lr_bu = lr_bu if lr_bu is not None else lr_all
+        self.lr_bi = lr_bi if lr_bi is not None else lr_all
+        self.lr_pu = lr_pu if lr_pu is not None else lr_all
+        self.lr_qi = lr_qi if lr_qi is not None else lr_all
+        self.reg_bu = reg_bu if reg_bu is not None else reg_all
+        self.reg_bi = reg_bi if reg_bi is not None else reg_all
+        self.reg_pu = reg_pu if reg_pu is not None else reg_all
+        self.reg_qi = reg_qi if reg_qi is not None else reg_all
+        self.random_state = random_state
+        self.verbose = verbose
+
+        AlgoBase.__init__(self)
+```
+
+在代码实现中，算法通过随机梯度下降(SGD)来最小化正则化平方误差。关键的参数配置包括n_factors用于设定潜在因子数量（默认100），n_epochs控制SGD迭代次数（默认20次）。算法支持biased参数来决定是否使用偏置项，当设为False时可获得无偏版本。
+
+```python
+    def fit(self, trainset):
+
+        AlgoBase.fit(self, trainset)
+        self.sgd(trainset)
+
+        return self
+```
+
+用户和物品因子的初始化遵循正态分布，可通过init_mean和init_std_dev参数调节均值和标准差。学习率控制通过lr_all统一设置（默认0.005），或者分别为不同参数类型设置lr_bu、lr_bi、lr_pu、lr_qi。正则化参数同样支持统一设置reg_all（默认0.02）或分别配置。
+
+训练完成后，算法会生成四个重要属性：pu表示用户因子矩阵（n_users × n_factors），qi表示物品因子矩阵（n_items × n_factors），bu和bi分别表示用户和物品偏置向量。
+
+```python
+    def estimate(self, u, i):
+        # Should we cythonize this as well?
+
+        known_user = self.trainset.knows_user(u)
+        known_item = self.trainset.knows_item(i)
+
+        if self.biased:
+            est = self.trainset.global_mean
+
+            if known_user:
+                est += self.bu[u]
+
+            if known_item:
+                est += self.bi[i]
+
+            if known_user and known_item:
+                est += np.dot(self.qi[i], self.pu[u])
+
+        else:
+            if known_user and known_item:
+                est = np.dot(self.qi[i], self.pu[u])
+            else:
+                raise PredictionImpossible('User and item are unknown.')
+
+        return est
+```
+
+
+
+### SVD++
+
+然而，传统的SVD方法存在一个显著的局限性，即它仅仅考虑了显式的评分信息，而忽略了用户在系统中产生的大量隐式反馈信息。在实际的推荐系统应用场景中，用户的隐式行为数据（如商品浏览记录、购买历史、点击行为等）往往比显式评分更加丰富和容易获取。基于这一观察，SVD++算法应运而生，它在传统SVD的基础上融合了隐式反馈信息，从而能够更全面地建模用户的偏好模式。
+
+#### 算法原理
+
+>  
+> 基础分解框架复用5.1.1节的 $R ≈ PQ^T$ 模型  
+>  
+
+==**预测评分公式**== SVD++算法的核心创新在于将用户的隐式反馈信息整合到评分预测模型中。该算法认为，即使用户没有对某个商品给出明确的评分，但用户与该商品的交互行为仍然能够反映用户的潜在兴趣。基于这一思想，SVD++算法重新定义了评分预测公式：
+
+$$
+\hat{r}_{ui} = \mu + b_u + b_i + \left( p_u + |I_u|^{-1/2} \sum_{j \in I_u} y_j \right)^T q_i
+$$
+
+在这个公式中，预测评分不再仅仅依赖于用户和商品的基本特征向量，而是引入了多个重要的改进元素。首先，`μ`代表了整个系统的全局平均评分，它反映了所有用户对所有商品的整体评价趋势。其次，`b_u`和`b_i`分别表示用户u和商品i的偏置项，这些偏置项能够捕捉个体用户和商品相对于全局平均水平的系统性偏差。 
+
+更为重要的是，SVD++算法在用户特征向量`p_u`的基础上增加了隐式反馈项`|I_u|^(-1/2) Σ(j∈I_u) y_j`。这里，`I_u`表示用户u有过交互行为的商品集合，`y_j`是商品j对应的隐式反馈因子向量，而`|I_u|^(-1/2)`是归一化因子，用于消除不同用户交互商品数量差异带来的影响。这种设计使得算法能够从用户的历史行为模式中推断出用户的潜在偏好，即使这些偏好没有通过显式评分表达出来。
+
+==**损失函数与正则化**== 为了学习上述模型中的所有参数，需要在损失函数中同时对显式与隐式部分进行约束。完整的目标函数可以表示为：
+$$
+\begin{aligned}
+L \;=\; &\sum_{(u,i)\in R}\left[r_{ui} \;-\; \mu \;-\; b_u \;-\; b_i \;-\;\Bigl(p_u + |I_u|^{-\frac{1}{2}} \sum_{j\in I_u} y_j\Bigr)^{\T!}\,q_i\right]^2 \\
+&\;+\;\lambda\left(\|p_u\|^2 + \|q_i\|^2 + \|y_j\|^2 + b_u^2 + b_i^2\right)
+\end{aligned}
+$$
+
+- 第一项为预测误差的平方和，涵盖了显式评分与融合了隐式反馈后的预测值之差。
+
+- 第二项为正则化项，对显式特征向量 pu,  qi、隐式反馈因子 yj 以及偏置 bu, bi 一并加以约束，防止模型过拟合。
+
+==**随机梯度下降**==  SVD++ 通常采用随机梯度下降（SGD）来优化上述损失函数。对于每一条训练样本 (u,i)(u,i)(u,i)，首先计算预测误差：
+$$
+e_{ui} = r_{ui} - \hat{r}_{ui} = r_{ui} - \Bigl[\mu + b_u + b_i + \Bigl(p_u + |I_u|^{-\frac{1}{2}} \sum_{j \in I_u} y_j\Bigr)^T q_i\Bigr].
+$$
+然后，根据梯度信息更新各项参数。随机梯度更新方式保证了在大规模数据集上具有较高的计算效率，同时能够有效避免陷入局部最优。
+
+相比于传统SVD（或RSVD）只针对评分矩阵进行分解，**SVD++ 由于要处理额外的隐式反馈信息，因此计算量有所增加**，但这部分开销是合理且必要的：在实际推荐场景中，隐式反馈极大地提升了模型的预测精度和推荐质量，尤其在数据稀疏、长尾物品较多的情况下优势更加明显。
+
+
+
+####  代码实现
+
+SVD++算法是SVD的扩展版本，其创新之处在于考虑了隐式评分信息。该算法引入了新的物品因子yj来捕获隐式评分，即用户对物品进行评分这一行为本身，而不考虑具体评分值。
+
+```python
+class SVDpp(AlgoBase):
+
+    def __init__(self, n_factors=20, n_epochs=20, init_mean=0, init_std_dev=.1,
+                 lr_all=.007, reg_all=.02, lr_bu=None, lr_bi=None, lr_pu=None,
+                 lr_qi=None, lr_yj=None, reg_bu=None, reg_bi=None, reg_pu=None,
+                 reg_qi=None, reg_yj=None, random_state=None, verbose=False,
+                 cache_ratings=False):
+
+        self.n_factors = n_factors
+        self.n_epochs = n_epochs
+        self.init_mean = init_mean
+        self.init_std_dev = init_std_dev
+        self.lr_bu = lr_bu if lr_bu is not None else lr_all
+        self.lr_bi = lr_bi if lr_bi is not None else lr_all
+        self.lr_pu = lr_pu if lr_pu is not None else lr_all
+        self.lr_qi = lr_qi if lr_qi is not None else lr_all
+        self.lr_yj = lr_yj if lr_yj is not None else lr_all
+        self.reg_bu = reg_bu if reg_bu is not None else reg_all
+        self.reg_bi = reg_bi if reg_bi is not None else reg_all
+        self.reg_pu = reg_pu if reg_pu is not None else reg_all
+        self.reg_qi = reg_qi if reg_qi is not None else reg_all
+        self.reg_yj = reg_yj if reg_yj is not None else reg_all
+        self.random_state = random_state
+        self.verbose = verbose
+        self.cache_ratings = cache_ratings
+
+        AlgoBase.__init__(self)
+```
+
+在代码参数配置上，SVD++的n_factors默认值调整为20，学习率lr_all默认设为0.007。算法新增了cache_ratings参数来决定是否在训练时缓存评分数据，这能加速训练但会增加内存占用。与SVD相比，SVD++增加了lr_yj和reg_yj参数来控制隐式因子的学习率和正则化。
+
+训练后的模型会额外生成yj属性，表示隐式物品因子矩阵（n_items × n_factors），这与显式的qi因子矩阵配合使用，提升了预测准确性。
+
+```python
+    def estimate(self, u, i):
+
+        est = self.trainset.global_mean
+
+        if self.trainset.knows_user(u):
+            est += self.bu[u]
+
+        if self.trainset.knows_item(i):
+            est += self.bi[i]
+
+        if self.trainset.knows_user(u) and self.trainset.knows_item(i):
+            Iu = len(self.trainset.ur[u])  # nb of items rated by u
+            u_impl_feedback = (sum(self.yj[j] for (j, _)
+                               in self.trainset.ur[u]) / np.sqrt(Iu))
+            est += np.dot(self.qi[i], self.pu[u] + u_impl_feedback)
+
+        return est
+```
+
+
+
+### NMF
+
+非负矩阵分解（Non-Negative Matrix Factorization, NMF）是一种重要的数据分析技术，其核心思想是将大规模数据集分解为更小且具有实际意义的组成部分，同时确保所有数值保持非负性。这种约束条件使得NMF在提取数据中有用特征方面表现出色，并且大大简化了数据的分析和处理过程。与传统的矩阵分解方法相比，NMF的非负性约束更符合许多实际应用场景的物理意义，例如在图像处理中像素值不能为负，在文本分析中词频不能为负等情况。
+
+#### 算法原理
+
+> 复用5.1.1节的矩阵分解框架 $R ≈ PQ^T$  
+
+==**矩阵分解**== 对于一个维度为m × n的矩阵A，其中每个元素都大于等于0，NMF算法将其分解为两个矩阵W和H，这两个矩阵的维度分别为m × k和k × n，且两个矩阵都只包含非负元素。这种分解关系可以用数学公式表示为：
+$$
+A \approx W H, \quad W \in \mathbb{R}_{\geq 0}^{m \times k}, \, H \in \mathbb{R}_{\geq 0}^{k \times n}, \quad k \leq \min(m, n).
+$$
+这里，k 称为分解秩，通常取值远小于 min⁡(m,n) ，以实现降维和去噪的效果。矩阵 W 的每一列可以看作若干“基础模式”或“特征向量”，这些向量共同组成原始数据中存在的潜在结构；而 H 的每一列则记录了对应原始列向量（如某条样本或某个文档）在这些基础模式下的权重。由于两者都仅允许非负元素，因此分解结果可被直观解释为“将原始数据用若干个非负基础部分按加权叠加的方式重构”。
+
+<img src="https://media.geeksforgeeks.org/wp-content/uploads/20210429213042/Intuition1-660x298.png" alt="Lightbox" style="zoom:200%;" />
+
+==**重构误差 **== 要使 W H 尽可能接近 A ，N 通常采用最小化 Frobenius 范数的重构误差：
+$$
+\min_{W \geq 0, H \geq 0} \|A - W H\|_F^2 = \min_{W \geq 0, H \geq 0} \sum_{i=1}^{m} \sum_{j=1}^{n} \left( A_{ij} - [W H]_{ij} \right)^2,
+$$
+并要求 Wiℓ≥0,  Hℓj≥0 。由于这个优化问题是非凸的，通常只能找到局部最优解。在实际求解过程中，首先需要为 W 和 H 赋予非负的初始值，常见做法包括从均匀分布或正态分布（取绝对值）中采样，或者基于截断 SVD 等启发式方法进行初始化。良好的初始化有助于加速收敛并减少陷入较差局部最优的概率。
+
+==**迭代更新**== 随后进入迭代更新阶段，以逐步减少 ∥A−WH∥。这里最经典的优化技术是**乘法更新规则**：
+$$
+W_{il} \leftarrow W_{il} \times \frac{[A H^T]_{il}}{[W H H^T]_{il}},
+H_{\ell j} \leftarrow H_{\ell j} \times \frac{[W^T A]_{\ell j}}{[W^T W H]_{\ell j}}.
+$$
+
+
+每次更新后，W 与 H 都保持非负，并且 ∥A−WH∥在迭代过程中单调不增。通常交替执行若干次上述更新，直至满足如下任一停止条件：重构误差变化幅度低于预设阈值、达到最大迭代次数，或其他用户自定义的收敛标准。
+
+另一个常用的方法是**交替最小二乘法（ALS）**。其思路是固定 H  后，将$\min_{W \geq 0} \|A - W H\|_F^2$     转化为“带非负约束的最小二乘”子问题，通过合适的 NNLS 方法求得最优 W；接着固定新得到的 W ，以同样方式求解$\min_{H \geq 0} \|A - W H\|_F^2$   子问题获得 H ，然后再回到第一步循环。交替迭代直到收敛。ALS 在处理大规模、稀疏数据时往往比乘法更新收敛更快，但需要调用 NNLS 求解器。
+
+==**应用场景**== 从直觉与应用角度来看，NMF 的关键在于“**以非负并且可解释的方式，将复杂数据拆解为若干有意义的部件再加权组合**”。这使得它特别适合的场景为：**人脸图像分解 文本主题建模  音频信号分离**。
+
+正是因为 NMF 保持了“非负”“部分叠加”的直观含义，并能够揭示出数据中隐藏的局部结构，它在图像、文本、音频等多个领域都得到了广泛且有效的应用。
+
+ 
+
+
+#### 代码实现
+
+NMF算法基于非负矩阵分解理论，确保所有用户和物品因子保持非负值。该算法的预测公式与SVD相似，但通过特殊的梯度下降步长选择来维持因子的非负性约束。
+
+```py
+class NMF(AlgoBase):
+
+    def __init__(self, n_factors=15, n_epochs=50, biased=False, reg_pu=.06,
+                 reg_qi=.06, reg_bu=.02, reg_bi=.02, lr_bu=.005, lr_bi=.005,
+                 init_low=0, init_high=1, random_state=None, verbose=False):
+
+        self.n_factors = n_factors
+        self.n_epochs = n_epochs
+        self.biased = biased
+        self.reg_pu = reg_pu
+        self.reg_qi = reg_qi
+        self.lr_bu = lr_bu
+        self.lr_bi = lr_bi
+        self.reg_bu = reg_bu
+        self.reg_bi = reg_bi
+        self.init_low = init_low
+        self.init_high = init_high
+        self.random_state = random_state
+        self.verbose = verbose
+
+        if self.init_low < 0:
+            raise ValueError('init_low should be greater than zero')
+
+        AlgoBase.__init__(self)
+```
+
+在参数设置上，NMF的n_factors默认值较小（15），但n_epochs增加到50次以确保充分收敛。算法默认不使用偏置（biased=False），但可以启用偏置版本来提高准确性，尽管这可能增加过拟合风险。
+
+NMF的关键配置包括reg_pu和reg_qi（默认0.06）来控制用户和物品因子的正则化，以及init_low和init_high（默认0到1）来设置因子初始化范围。由于算法对初始值高度敏感，这两个参数的调节需要格外谨慎。
+
+```python
+    def estimate(self, u, i):
+        # Should we cythonize this as well?
+        known_user = self.trainset.knows_user(u)
+        known_item = self.trainset.knows_item(i)
+
+        if self.biased:
+            est = self.trainset.global_mean
+            if known_user:
+                est += self.bu[u]
+            if known_item:
+                est += self.bi[i]
+            if known_user and known_item:
+                est += np.dot(self.qi[i], self.pu[u])
+
+        else:
+            if known_user and known_item:
+                est = np.dot(self.qi[i], self.pu[u])
+            else:
+                raise PredictionImpossible('User and item are unknown.')
+
+        return est
+```
+
+这三种算法都支持random_state参数来控制随机数生成，确保结果的可重现性，并提供verbose参数来显示训练进度。在实际应用中，开发者需要根据具体数据特征和性能要求来选择合适的算法和参数配置，以获得最佳的推荐效果。
+
+
+
+
+
+
+## 实验结果
+
+
+
+### **时间与内存消耗分析**
+
+<img src="images/model_comparison1.png" alt="物品分布情况" style="zoom:200%;" />
+
+ 
+
+
+
+### **全局误差对比**
+
+<img src="images/model_comparison2.png" alt="物品分布情况" style="zoom:200%;" />
+
+
+
+### **模型特性分析**
+
+
+
+#### User
+
+
 
