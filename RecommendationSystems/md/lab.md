@@ -72,11 +72,29 @@
 
 ## 实验背景
 
+推荐系统作为信息过滤的核心技术，已在电子商务、社交媒体和内容平台等领域产生深远影响。其核心目标是通过分析用户历史行为与物品特征，预测用户对未知物品的偏好，从而解决信息过载问题。本实验聚焦于**协同过滤推荐算法**，该类算法不依赖物品内容特征，仅基于“相似用户或物品具有相似偏好”的假设挖掘潜在关联，尤其在用户行为数据丰富的场景中表现出强大适应性。
 
+本次实验涵盖从基础到前沿的多类模型：
+
+1. **传统协同过滤**（如User-Based/Item-Based CF）通过用户/物品相似度加权预测评分；
+2. **图模型与集成**（Graph CF）将用户-物品交互建模为二部图，利用随机游走捕捉高阶关联；
+3. **线性优化模型**（如 GDLinearCF/LeastSquares CF）结合机器学习方法增强非线性拟合能力。
+4. **矩阵分解**（SVD/SVD++/NMF）将评分矩阵分解为低维潜在特征向量，挖掘隐含偏好模式；
+
+这些算法在应对稀疏数据、冷启动等挑战时各有侧重，本实验通过系统性对比其性能差异，为推荐系统的算法选择与优化提供实证依据。
 
 
 
 ## 实验要求
+
+本实验要求基于`Train.txt`数据集训练推荐模型，预测`Test.txt`文件中未知用户-物品对`(u, i)`的评分，并将预测结果按照`ResultForm.txt`指定的格式输出；实验报告需包含以下核心内容：
+
+- 数据集基本统计信息（用户数、物品数、评分数等），
+- 所用推荐算法的详细描述，
+- 实验结果（包括预测的均方根误差/RMSE、模型训练时间及空间消耗分析），
+- 对算法的理论分析和/或实验性能分析。
+
+实验需由最多3名学生组成的小组合作完成，报告与预测结果需于**2025年6月8日24:00前**提交至邮箱`bigdatacomputing@163.com`，所有提交内容必须为小组原创，严禁作弊或抄袭。
 
 
 
@@ -1082,8 +1100,6 @@ class SVDpp(AlgoBase):
 
 #### 算法原理
 
-> 复用5.1.1节的矩阵分解框架 $R ≈ PQ^T$  
-
 ==**矩阵分解**== 对于一个维度为m × n的矩阵A，其中每个元素都大于等于0，NMF算法将其分解为两个矩阵W和H，这两个矩阵的维度分别为m × k和k × n，且两个矩阵都只包含非负元素。这种分解关系可以用数学公式表示为：
 $$
 A \approx W H, \quad W \in \mathbb{R}_{\geq 0}^{m \times k}, \, H \in \mathbb{R}_{\geq 0}^{k \times n}, \quad k \leq \min(m, n).
@@ -1186,7 +1202,7 @@ NMF的关键配置包括reg_pu和reg_qi（默认0.06）来控制用户和物品�
 
 > 在代码编写过程中，本小组采用了两种不同的代码框架来构建模型，鉴于保证实验结果的有效性和公平性，部分实验分析的图表分成两个"7+3"模式，**即SVD、SVD++、NMF分成一组，其他算法分成一组**，从而在相同环境下比较差距。
 
-### **时间与内存消耗分析**
+### 时间与内存消耗分析
 
 统一的数据集和参数配置下，对比了UserCF、ItemCF、SlopeOne、GraphCF、TopKNanCF、GDLinearCF、LeastSquaresCF的性能表现。实验过程中， 所有模型**均采用相同的训练集、验证集划分（2:8比例）**，并详细记录每个模型在训练阶段的内存消耗（MB）和训练耗时（秒）。模型参数方面，邻居数量（n_neighbors）统一设为20，相似度计算方法主要采用余弦相似度（cosine），其余参数均为各算法推荐的默认配置，最大程度保证了实验的公平性和复现性。结果如下图表：
 
@@ -1208,7 +1224,7 @@ NMF方法在本次实验中表现出较高的训练时间（31.67秒），为所
 
 
 
-### **全局误差对比**
+### 全局误差对比
 
  统一的数据集和参数配置下，对比七种协同过滤推荐算法的性能表现，评估指标选用平均绝对误差（MAE）和均方根误差（RMSE）。 结果如下图表：
 
@@ -1218,16 +1234,23 @@ NMF方法在本次实验中表现出较高的训练时间（31.67秒），为所
 
 GraphCF模型通过引入图结构和随机游走机制，能够捕捉用户与物品之间的高阶关系，但在本实验中其误差略高于传统CF方法 。TopKNanCF、GDLinearCF和LeastSquaresCF等集成与线性优化方法的误差相对较高，尤其是LeastSquaresCF的RMSE达到22.00，显示出在当前数据分布下，简单线性模型难以充分挖掘用户-物品间的复杂关联，**这与本数据集物品数量远大于用户数量且评分极度稀疏有极大关系**。
 
-
+*另一组代码框架下的RMSE和MAE对比如下图表：*
 
 <img src="images/model_comparison3.png" alt="物品分布情况"  />
 
-从RMSE和MAE的实验结果来看，BaselineOnly方法在两项指标上均取得了最低的误差，分别为17.44和13.43，说明在当前数据集和参数设置下，简单的全局均值预测反而具有较强的稳健性。SVD方法引入了矩阵分解，理论上能够更好地捕捉用户和物品的潜在特征，但实际误差略有上升，RMSE为18.25，MAE为14.01，表明其泛化能力受限于数据稀疏或参数未充分优化。
+ BaselineOnly方法在两项指标上均取得了最低的误差，分别为17.44和13.43，说明在当前数据集和参数设置下，简单的全局均值预测反而具有较强的稳健性。SVD方法引入了矩阵分解，理论上能够更好地捕捉用户和物品的潜在特征，但实际误差略有上升，RMSE为18.25，MAE为14.01，表明其泛化能力受限于数据稀疏或参数未充分优化。
 
-SVDpp方法在未使用缓存和使用缓存的情况下，RMSE和MAE均高于SVD，显示其在本实验条件下未能有效提升预测精度，可能与隐式反馈信息噪声较大或模型复杂度过高有关。NMF方法的表现介于SVD和SVDpp之间，RMSE为19.85，MAE为15.21，说明其在分解方式和特征表达上具有一定优势，但仍未超越最简单的BaselineOnly。整体来看，复杂模型在本实验中未能带来误差的显著降低，后续需从数据质量或参数调优等方面进一步优化。
+SVDpp方法在未使用缓存和使用缓存的情况下，RMSE和MAE均高于SVD，显示其在本实验条件下未能有效提升预测精度，可能与隐式反馈信息噪声较大或模型复杂度过高有关。NMF方法的表现介于SVD和SVDpp之间，RMSE为19.85，MAE为15.21，说明其在分解方式和特征表达上具有一定优势，但仍未超越最简单的BaselineOnly。整体来看，**复杂模型在本实验中未能带来误差的显著降低，后续需从数据质量或参数调优等方面进一步优化。**
+
+部分算法的性能雷达图为：
+
+<img src="images/radar1.png" alt="物品分布情况"  />
 
 
-### **模型特性分析**
+
+
+
+### 模型特性分析
 
 
 
@@ -1245,8 +1268,46 @@ SVDpp方法在未使用缓存和使用缓存的情况下，RMSE和MAE均高于SV
 
 此部分针对GraphCF模型的两个关键参数——随机游走重启概率alpha和评分融合权重score_weight，进行系统的自动调参分析。**alpha参数用于控制随机游走过程中分数在原节点和邻居节点之间的分配比例**，理论上能够影响信息在图结构中的传播深度和范围；**而score_weight则决定了最终评分预测中图结构传播分数与物品均值偏移的融合比例**，从而调节模型对结构信息与统计信息的依赖程度。
 
- 使用相同数据集，采用alpha取值范围为[0.6, 0.7, 0.8, 0.85, 0.9, 0.95]，score_weight取值范围为[0.1, 0.3, 0.5, 0.7, 0.9]，每组参数下均训练20次迭代并评估MAE与RMSE。结果如热力图所示：
+ 使用相同数据集，采用alpha取值范围为`[0.6, 0.7, 0.8, 0.85, 0.9, 0.95]`，score_weight取值范围为`[0.1, 0.3, 0.5, 0.7, 0.9]`，每组参数下均训练20次迭代并评估MAE与RMSE。结果如热力图所示：
 
 <img src="images/graphcf_param_heatmap.png" alt="物品分布情况"  />
 
-从 结果可以看出，**alpha的变化对模型误差几乎没有影响**，说明在当前实现和数据分布下，分数传播的深度和重启概率对最终预测结果影响有限；而score_weight的变化则带来了明显的误差波动，**随着score_weight增大**，**模型对图结构分数的依赖增强，MAE和RMSE均呈现先降低后升高的趋势（0.3左右达到最低），**表明合理融合结构信息与统计信息能够有效提升模型性能。
+从结果可以看出，**alpha的变化对模型误差几乎没有影响**，说明在当前实现和数据分布下，分数传播的深度和重启概率对最终预测结果影响有限；而score_weight的变化则带来了明显的误差波动，**随着score_weight增大**，**模型对图结构分数的依赖增强，MAE和RMSE均呈现先降低后升高的趋势（0.3左右达到最低），**表明合理融合结构信息与统计信息能够有效提升模型性能。
+
+
+
+
+
+
+
+## 致谢
+
+本次实验在杨征路老师的悉心指导下得以顺利开展。杨老师以渊博的学识和严谨的治学态度，为我们深入浅出地讲解了推荐系统与协同过滤算法的核心原理，并在实验设计、数据处理及结果分析等关键环节给予了耐心细致的指导，使我们能够系统地理解和掌握相关技术。在此谨向杨征路老师致以诚挚的谢意。
+
+同时，我们要感谢小组全体成员在项目实施过程中的通力合作与无私奉献。面对实验过程中出现的算法调优、数据稀疏和性能评估等多项挑战，大家以高度的责任感和团队精神，积极展开讨论、协同攻关，不断优化实验方案并及时分享心得，为最终成果的完成奠定了坚实基础。感谢每一位成员的努力与支持。
+
+
+
+## 参考文献
+
+1.Sarwar, B., Karypis, G., Konstan, J., & Riedl, J. (2001). *Item-based collaborative filtering recommendation algorithms*. Proceedings of the 10th International Conference on World Wide Web (WWW ’01), 285–295.
+
+2.Herlocker, J. L., Konstan, J. A., Borchers, A., & Riedl, J. (1999). *An algorithmic framework for performing collaborative filtering*. Proceedings of the 22nd Annual International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR ’99), 230–237.
+
+3.Lemire, D., & Maclachlan, A. (2005). *Slope One Predictors for Online Rating-Based Collaborative Filtering*. Proceedings of SIAM Data Mining Conference (SDM ’05), 471–475.
+
+4.Fouss, F., Pirotte, A., Renders, J.-M., & Saerens, M. (2007). *Random-walk computation of similarities between nodes of a graph with application to collaborative recommendation*. IEEE Transactions on Knowledge and Data Engineering, 19(3), 355–369.
+
+5.Tong, H., Faloutsos, C., & Pan, J.-Y. (2006). *Fast Random Walk with Restart and its Applications*. Proceedings of the Sixth International Conference on Data Mining (ICDM ’06), 613–622.
+
+6.Rendle, S. (2010). *Factorization Machines*. Proceedings of the 2010 IEEE International Conference on Data Mining (ICDM ’10), 995–1000.    
+
+7.Zhang, S., Yao, L., Sun, A., & Tay, Y. (2019). *Deep Learning Based Recommender System: A Survey and New Perspectives*. ACM Computing Surveys, 52(1), Article 5. 
+
+8.Zhou, Y., Wilkinson, D., Schreiber, R., & Pan, R. (2008). *Large-Scale Parallel Collaborative Filtering for the Netflix Prize*. Proceedings of the Fourth International Conference on Algorithmic Aspects in Information and Management (AAIM ’08), 337–348.
+
+9.Koren, Y., Bell, R., & Volinsky, C. (2009). *Matrix Factorization Techniques for Recommender Systems*. IEEE Computer, 42(8), 30–37.
+
+10.Koren, Y. (2008). *Factorization Meets the Neighborhood: a Multifaceted Collaborative Filtering Model*. Proceedings of the 14th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (KDD ’08), 426–434.
+
+11.Lee, D. D., & Seung, H. S. (2001). *Algorithms for Non-negative Matrix Factorization*. Advances in Neural Information Processing Systems (NIPS ’01), 556–562.
