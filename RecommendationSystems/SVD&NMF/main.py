@@ -41,9 +41,23 @@ data = Dataset.load_from_df(df[['user','item','rating']], reader)
 algos = [
     ("BaselineOnly",       BaselineOnly()),
     ("SVD",                SVD()),
-    ("SVDpp cache=False",  SVDpp(cache_ratings=False)),
-    ("SVDpp cache=True",   SVDpp(cache_ratings=True)),
-    ("NMF",                NMF()),
+    # ("SVDpp cache=False",  SVDpp(cache_ratings=False)),
+    # ("SVDpp cache=True",   SVDpp(cache_ratings=True)),
+    ("NMF_Optimized",      NMF(
+        n_factors=20,          # 增加因子数量
+        n_epochs=100,          # 增加训练轮数
+        biased=True,           # 启用偏置项
+        reg_pu=0.08,           # 增加用户因子正则化
+        reg_qi=0.08,           # 增加物品因子正则化
+        reg_bu=0.03,           # 增加用户偏置正则化
+        reg_bi=0.03,           # 增加物品偏置正则化
+        lr_bu=0.007,           # 调整用户偏置学习率
+        lr_bi=0.007,           # 调整物品偏置学习率
+        init_low=0.1,          # 调整初始化下界
+        init_high=0.9,         # 调整初始化上界
+        random_state=42,       # 设置随机种子
+        verbose=True           # 启用详细输出
+    )),
     ("SlopeOne",           SlopeOne()),
 ]
 

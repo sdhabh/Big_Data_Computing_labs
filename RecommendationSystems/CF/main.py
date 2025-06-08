@@ -14,6 +14,12 @@ from algorithm.GDLinearCF import GDLinearCF
 import sys
 import gc
 
+# ========== 新增：兼容 PyInstaller 路径 ==========
+def get_resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+# ===============================================
 
 def get_display_width(text):
     width = 0
@@ -262,12 +268,12 @@ def run_basic_models():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # 构建训练集、验证集和测试集的文件路径
-    train_file = os.path.join(current_dir, "data", "train_split.txt")
-    val_file = os.path.join(current_dir, "data", "val_split.txt")
-    test_file = os.path.join(current_dir, "data", "test.txt")
+    train_file = get_resource_path(os.path.join("data", "train_split.txt"))
+    val_file = get_resource_path(os.path.join("data", "val_split.txt"))
+    test_file = get_resource_path(os.path.join("data", "test.txt"))
     
     # 创建输出目录
-    output_dir = os.path.join(current_dir, "output")
+    output_dir = get_resource_path("output")
     os.makedirs(output_dir, exist_ok=True)
     
     # 运行UserCF模型 
@@ -326,12 +332,12 @@ def run_cross_validation_models():
     print(f"└─ 相似度计算方法 (similarity_method): {similarity_method}\n")
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(current_dir, "data")
-    output_dir = os.path.join(current_dir, "output")
+    data_dir = get_resource_path("data")
+    output_dir = get_resource_path("output")
     os.makedirs(output_dir, exist_ok=True)
 
-    train_txt_path = os.path.join(data_dir, "train.txt")
-    test_file = os.path.join(data_dir, "test.txt")
+    train_txt_path = get_resource_path(os.path.join("data", "train.txt"))
+    test_file = get_resource_path(os.path.join("data", "test.txt"))
 
     # 读取完整训练数据
     user_item_score = read_data_to_dict(train_txt_path)
@@ -409,7 +415,7 @@ def main():
 
     # 日志重定向到不同的log文件
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    output_dir = os.path.join(current_dir, "output")
+    output_dir = get_resource_path("output")
     os.makedirs(output_dir, exist_ok=True)
     if args.mode == 'basic':
         log_file = os.path.join(output_dir, "basic1_log.txt")
